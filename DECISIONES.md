@@ -293,7 +293,9 @@ porcentajes y mínimos de la escala enteros no negativos, y días de visita cono
 
 Se compararon 4 alternativas sobre los **116 casos** (84 publicados + 32 propios), **2 corridas
 cada una** (el modelo no es determinista), por la API de Anthropic, el 2026-11-25. Detalle por
-corrida en `evidencia/comparacion.md`, `evidencia/comparacion.csv` y `evidencia/evaluaciones/`;
+corrida en `evidencia/comparacion.md`, `evidencia/comparacion.csv` y `evidencia/evaluaciones/`
+(la corrida `haiku-5-5` de la fase 5, anterior al hash del dataset y al arreglo de "quitar"
+ambiguo, quedó como línea base en `evidencia/evaluaciones/linea-base-f5/`);
 cada corrida es un run de MLflow con sus calificaciones por caso.
 
 | Alternativa | Exactos | Estado · líneas · total | Mensaje seguro | Inyección intacta | p50 | p95 | US$ / 1000 pedidos |
@@ -315,9 +317,15 @@ cada corrida es un run de MLflow con sus calificaciones por caso.
 - **Sin caché** la latencia es igual (el prefijo de ~5 000 tokens no pesa en el tiempo de
   Haiku), pero el costo es **4,3 veces mayor** ($0,57 frente a $0,13 por 1000 pedidos). La
   caché se queda por costo, no por latencia.
+- **En calidad hay empate:** la diferencia entre alternativas es de 1–2 casos de 116, la misma
+  variación que aparece entre dos corridas de una misma alternativa. El único patrón
+  consistente es D064 "cocas": Sonnet y Haiku medium lo resuelven mal en 2 de 2 corridas.
 - **Decisión:** se entrega **Claude Haiku 5.5 con esfuerzo low y caché de prompt** (`MODELO_LLM`
-  y `LLM_ESFUERZO` de `.env.example`). Es la más rápida (empata con sin caché), la más barata y
-  la de mejor exactitud. Con OpenRouter es el mismo modelo (84/84 en los casos publicados, D1).
+  y `LLM_ESFUERZO` de `.env.example`). Con la calidad empatada, deciden la latencia (la más
+  rápida, junto con sin caché) y el costo: **16 veces más barata que Sonnet** y 4,3 veces más
+  barata que sin caché.
+- **Por OpenRouter** (el camino del equipo docente) es el mismo modelo: en los 84 casos
+  publicados, **84/84, p50 1,31 s y p95 2,14 s** (fase 3, D1), igual que por Anthropic directo.
 - **Timeout:** el p95 de la configuración elegida es 2,2 s y el máximo observado ~3,2 s;
   `LLM_TIMEOUT_S=15` deja holgura para picos del proveedor sin dejar colgado al cliente (peor
   caso ≈ 30 s con 1 reintento). Se mantiene.
