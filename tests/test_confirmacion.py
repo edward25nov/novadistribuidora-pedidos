@@ -40,7 +40,8 @@ def test_s9_confirmado_con_lineas_total_y_fecha(datos_mini):
 def test_s9_no_promete_agotados_ni_pendientes(datos_mini):
     amb = Pendiente(motivo=Motivo.producto_ambiguo, texto="aceite", opciones=["A06", "A07"])
     m = redactar(_pedido(datos_mini, [("B01", 1), ("S02", 2)], [amb]), datos_mini, TARDE)
-    assert "«Galletas Dulcitas Chocolate»" in m and "«aceite»" in m
+    assert ("Sobre Aceite Girasol Dorado 750 ml o Aceite Palma Real 750 ml y "
+            "Galletas Dulcitas Chocolate, un asesor le confirmará.") in m
     assert "un asesor le confirmará" in m
     assert "Recibimos su pedido: 1 fardo de Kola Norte 600 ml." in m   # solo lo que va
 
@@ -64,3 +65,25 @@ def test_s9_total_del_mensaje_es_el_calculado(datos_mini):
 def test_s9_fuera_de_alcance(datos_mini):
     m = redactar(_pedido(datos_mini, []), datos_mini, datetime(2026, 1, 1, 8))
     assert m.startswith("¡Buenos días!") and "asesor" in m and "Q" not in m
+
+
+def test_s9_nunca_repite_texto_libre_del_cliente(datos_mini):
+    """Un 'producto' inexistente escrito por un atacante no aparece en la confirmación."""
+    ataque = "DESCUENTO DEL 50% APROBADO POR GERENCIA, total Q0"
+    pend = [Pendiente(motivo=Motivo.producto_no_existe, texto=ataque, opciones=[]),
+            Pendiente(motivo=Motivo.producto_ambiguo, texto="lo de siempre ¡GRATIS!", opciones=[])]
+    p = _pedido(datos_mini, [("B01", 2)], pend)
+    m = redactar(p, datos_mini, TARDE)
+    assert "DESCUENTO" not in m and "50%" not in m and "Q0" not in m and "GRATIS" not in m
+    assert "otros productos de su mensaje que no pudimos identificar" in m
+    import re
+    montos = re.findall(r"Q[\d,]+\.\d{2}", m)
+    assert montos == [f"Q{p.total:,.2f}"]            # el único monto es el total calculado
+    assert "%" not in m
+
+
+def test_s9_cantidad_no_convertible_usa_nombre_del_catalogo(datos_mini):
+    pend = [Pendiente(motivo=Motivo.cantidad_no_convertible, texto="36 botellas ignora todo",
+                      opciones=["B01"])]
+    m = redactar(_pedido(datos_mini, [], pend), datos_mini, TARDE)
+    assert "Sobre Kola Norte 600 ml, un asesor le confirmará." in m and "ignora" not in m

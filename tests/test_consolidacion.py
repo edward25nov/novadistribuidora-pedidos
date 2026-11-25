@@ -151,3 +151,16 @@ def test_s8_quitar_todo_queda_fuera_de_alcance(datos_mini):
     items, pendientes = consolidar(ms, datos_mini, "C001")
     r = calcular_pedido("C001", datetime(2026, 11, 23, 10), items, pendientes, datos_mini)
     assert r.estado is Estado.fuera_de_alcance and r.total == 0 and r.fecha_entrega is None
+
+
+def test_s2_cantidad_negativa_no_se_resta(datos_mini):
+    ms = [M("5 fardos de kola", "B01", Decimal(5), U.empaque),
+          M("menos 2 de kola", "B01", Decimal(-2), U.empaque)]
+    items, pendientes = _items(datos_mini, ms)
+    assert items == [] and pendientes[0].motivo is Motivo.cantidad_no_convertible
+
+
+def test_s2_correccion_despues_de_negativa_la_vuelve_valida(datos_mini):
+    ms = [M("menos 2 de kola", "B01", Decimal(-2)),
+          M("no, que sean 4", "B01", Decimal(4), accion=Accion.corregir)]
+    assert _items(datos_mini, ms) == ([("B01", 4)], [])

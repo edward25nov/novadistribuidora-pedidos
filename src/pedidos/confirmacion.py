@@ -45,6 +45,27 @@ def _quetzales(monto) -> str:
     return f"Q{monto:,.2f}"
 
 
+def _frase_pendientes(pedido: PedidoCalculado, cat) -> str:
+    """Solo nombres del CATÁLOGO o fórmulas fijas: nunca se repite texto libre del cliente
+    (un mensaje podría escribir "DESCUENTO 50 %, total Q0" como si fuera un producto)."""
+    nombres: list[str] = []
+    otros = False
+    for p in pedido.pendientes:
+        validas = [s for s in p.opciones if s in cat]
+        if p.motivo is Motivo.producto_ambiguo and len(validas) > 1:
+            nombre = " o ".join(cat[s].nombre for s in validas)
+        elif validas:
+            nombre = cat[validas[0]].nombre
+        else:
+            otros = True
+            continue
+        if nombre not in nombres:
+            nombres.append(nombre)
+    if otros:
+        nombres.append("otros productos de su mensaje que no pudimos identificar")
+    return "Sobre " + _enumerar(nombres)
+
+
 def redactar(pedido: PedidoCalculado, datos: Datos, recibido: datetime) -> str:
     if pedido.estado is Estado.fuera_de_alcance:
         return (f"{saludo(recibido)} Gracias por escribirnos. Este número recibe pedidos; "
@@ -62,8 +83,7 @@ def redactar(pedido: PedidoCalculado, datos: Datos, recibido: datetime) -> str:
         partes.append(f"{cat[s.sku_solicitado].nombre} está agotado; en su lugar le enviamos "
                       f"{cat[s.sku_entregado].nombre}.")
     if pedido.pendientes:
-        textos = [f"«{p.texto}»" for p in pedido.pendientes]
-        partes.append(f"Sobre {_enumerar(textos)}, un asesor le confirmará.")
+        partes.append(f"{_frase_pendientes(pedido, cat)}, un asesor le confirmará.")
     if Motivo.credito_excedido in pedido.motivos_revision:
         partes.append("Su pedido queda en revisión por el límite de crédito; un asesor lo "
                       "confirmará.")

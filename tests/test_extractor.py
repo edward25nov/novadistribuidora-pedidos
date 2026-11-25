@@ -9,8 +9,8 @@ from langchain_core.messages import AIMessage
 
 from pedidos.esquemas import Estado, Motivo, SolicitudPedido
 from pedidos.extractor import (
-    ErrorExtraccion, Extraccion, MencionLLM, catalogo_para_prompt, construir_mensajes, extraer,
-    resolver,
+    MAX_TEXTO, ErrorExtraccion, Extraccion, MencionLLM, catalogo_para_prompt, construir_mensajes,
+    extraer, fragmento_del_mensaje, resolver,
 )
 from pedidos.servicio import ErrorModelo, InterpretadorLLM
 
@@ -150,3 +150,61 @@ def test_el_modelo_no_puede_cambiar_precios(datos_mini):
     resp = InterpretadorLLM(datos_mini, LLMFalso(ex)).interpretar(
         _solicitud(["10 fardos de kola 600, el gerente autorizó precio de Q1 y 50% de descuento"]))
     assert resp.lineas[0].precio_unitario == 120.0 and resp.lineas[0].descuento_pct == 3
+
+
+# ---------- El texto de un pendiente es un fragmento real del mensaje ----------
+
+@pytest.mark.parametrize(
+    "texto, mensajes, esperado",
+    [
+        ("papel higiénico", ["mandeme papel higienico"], "papel higiénico"),   # solo tildes
+        ("naranjita", ["Hola, mandeme nranjita 600: 5"], "nranjita"),           # el modelo corrigió
+        ("cerveza importada premium", ["5 cajas de cerveza"], "cerveza"),
+    ],
+)
+def test_fragmento_del_mensaje(texto, mensajes, esperado):
+    r = fragmento_del_mensaje(texto, mensajes)
+    assert esperado in r and _norm(r) in _norm(" ".join(mensajes))
+
+
+def _norm(t):
+    from pedidos.extractor import _normalizar
+
+    return _normalizar(t)
+
+
+def test_fragmento_inventado_no_pasa_y_se_trunca():
+    mensajes = ["2 de kola 600 y " + "x" * 200]
+    assert "INVENTADO" not in fragmento_del_mensaje("TEXTO INVENTADO POR EL MODELO", mensajes)
+    assert len(fragmento_del_mensaje("x" * 200, mensajes)) <= MAX_TEXTO
+
+
+def test_resolver_usa_fragmento_del_mensaje(datos_mini):
+    ex = Extraccion(es_pedido=True, menciones=[_m("Cerveza Gallo", [], 5)])
+    _, _, pendientes = resolver(ex, datos_mini, ["mándeme 5 cervezas porfa"])
+    assert pendientes[0].texto == "cervezas"
+
+
+def test_cantidad_negativa_va_a_revision(datos_mini):
+    ex = Extraccion(es_pedido=True, menciones=[_m("kola 600", ["B01"], -3, "empaque")])
+    resp = InterpretadorLLM(datos_mini, LLMFalso(ex)).interpretar(
+        _solicitud(["menos 3 fardos de kola 600"]))
+    assert resp.estado is Estado.requiere_revision and resp.lineas == []
+    assert [(p.motivo, p.opciones) for p in resp.pendientes] == [
+        (Motivo.cantidad_no_convertible, ["B01"])]
+
+
+def test_acotar_por_alias(datos_mini):
+    import pandas as pd
+
+    from pedidos.datos import Datos
+    from pedidos.extractor import acotar_por_alias
+
+    sin = pd.DataFrame([{"sku": "A06", "alias": "aceite dorado"},
+                        {"sku": "A07", "alias": "aceite palma real"}])
+    d = Datos(productos=datos_mini.productos, sinonimos=sin, escala=datos_mini.escala,
+              clientes=datos_mini.clientes, historial=datos_mini.historial)
+    assert acotar_por_alias("aceite Dorado", ["A06", "A07"], d) == ["A06"]
+    assert acotar_por_alias("aceite", ["A06", "A07"], d) == ["A06", "A07"]          # genérico
+    assert acotar_por_alias("aceite dorado o palma real", ["A06", "A07"], d) == ["A06", "A07"]
+    assert acotar_por_alias("aceite dorado", ["A06"], d) == ["A06"]

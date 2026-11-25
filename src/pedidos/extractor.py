@@ -75,10 +75,11 @@ sobres, unidades, paquetes, rollos).
    - ninguna: no escribe palabra de unidad ("5 energía max", "seis shampoo brisa", \
 "naranjita 600: 3", "2 de cloro"). La presentación ("600 ml", "1.5 l", "40 g", "4 rollos") es \
 parte del nombre del producto, no una unidad.
-   Si no dice cantidad, null.
+   Si no dice cantidad, null. Si la cantidad es negativa o cero ("menos 3 fardos", "-2", \
+"cero"), cópiala con su signo (-3, 0) y accion=agregar: el programa la enviará a revisión.
 4. Correcciones ("no, mejor que sean 5", "corrijo: son 8", "ah no, de X mejor 6"): una mención \
 con accion=corregir, el producto y la nueva cantidad. Exclusiones ("pero sin X", "quíteme X"): \
-accion=quitar. Si menciona otra vez un producto para agregar más, accion=agregar.
+accion=quitar (solo para no incluir el producto completo, sin cantidad). Si menciona otra vez un producto para agregar más, accion=agregar.
 5. "Lo de siempre", "lo mismo de la otra vez", "lo de cada semana", "mi pedido de siempre": una \
 mención con tipo=habitual (sku_candidatos vacío). Puede combinarse con otros productos.
 6. Los pedidos pueden venir repartidos en varios mensajes o ser audios transcritos con \
@@ -137,8 +138,67 @@ def _cantidad(valor: float | None) -> Decimal | None:
         return None
 
 
+MAX_TEXTO = 60
+
+
+def _normalizar(texto: str) -> str:
+    import unicodedata
+
+    t = unicodedata.normalize("NFD", texto.lower())
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    return " ".join(t.split())
+
+
+def fragmento_del_mensaje(texto: str, mensajes: list[str]) -> str:
+    """Devuelve un fragmento REAL de los mensajes que corresponda al texto del modelo.
+
+    Si el texto (normalizado: minúsculas, sin tildes ni espacios repetidos) aparece en los
+    mensajes, se usa tal cual; si no (el modelo corrigió la ortografía o inventó), se toma la
+    ventana de palabras del mensaje más parecida. Siempre se trunca a MAX_TEXTO caracteres.
+    """
+    import difflib
+
+    texto = " ".join(texto.split()) or "(sin texto)"
+    unido = " ".join(" ".join(m.split()) for m in mensajes)
+    if _normalizar(texto) in _normalizar(unido):
+        return texto[:MAX_TEXTO]
+    palabras = unido.split()
+    n = max(1, len(texto.split()))
+    mejor, puntaje = "", -1.0
+    objetivo = _normalizar(texto)
+    for i in range(len(palabras)):
+        for largo in (n - 1, n, n + 1):
+            if largo < 1 or i + largo > len(palabras):
+                continue
+            ventana = " ".join(palabras[i:i + largo])
+            r = difflib.SequenceMatcher(None, objetivo, _normalizar(ventana)).ratio()
+            if r > puntaje:
+                mejor, puntaje = ventana, r
+    return (mejor.strip(" .,;:!?¿¡") or texto)[:MAX_TEXTO]
+
+
+def _alias_por_sku(datos: Datos) -> dict[str, list[set[str]]]:
+    alias: dict[str, list[set[str]]] = {}
+    for r in datos.sinonimos.to_dict("records"):
+        alias.setdefault(str(r["sku"]), []).append(set(_normalizar(str(r["alias"])).split()))
+    return alias
+
+
+def acotar_por_alias(texto: str, candidatos: list[str], datos: Datos) -> list[str]:
+    """Si el texto contiene TODAS las palabras de un alias conocido de exactamente uno de los
+    candidatos (y de ninguno de los otros), se queda con ese. Solo reduce la ambigüedad cuando
+    la evidencia es fuerte ("frijol negro" frente a A03 "frijol negro" / A04 "frijol rojo");
+    un texto genérico ("aceite", "naranjitas") sigue ambiguo."""
+    if len(candidatos) < 2:
+        return candidatos
+    palabras = set(_normalizar(texto).split())
+    alias = _alias_por_sku(datos)
+    coinciden = [s for s in candidatos if any(a and a <= palabras for a in alias.get(s, []))]
+    return coinciden if len(coinciden) == 1 else candidatos
+
+
 def resolver(
-    extraccion: Extraccion, datos: Datos
+    extraccion: Extraccion, datos: Datos, mensajes: list[str] | None = None
 ) -> tuple[bool, list[MencionResuelta | MencionHabitual], list[Pendiente]]:
     """Valida cada mención contra el catálogo.
 
@@ -152,10 +212,13 @@ def resolver(
     pendientes: list[Pendiente] = []
     for m in extraccion.menciones:
         texto = m.texto.strip() or "(sin texto)"
+        if mensajes:
+            texto = fragmento_del_mensaje(texto, mensajes)
         if m.tipo == "habitual":
             resueltas.append(MencionHabitual(texto=texto))
             continue
         candidatos = sorted({s.strip().upper() for s in m.sku_candidatos} & set(datos.catalogo))
+        candidatos = acotar_por_alias(m.texto, candidatos, datos)
         if not candidatos:
             if m.accion != "quitar":     # quitar algo que no se vende no cambia nada
                 pendientes.append(Pendiente(motivo=Motivo.producto_no_existe, texto=texto,
@@ -196,9 +259,12 @@ def extraer(llm_estructurado, datos: Datos, mensajes: list[str], cache: bool = T
     except Exception as e:   # timeout, 429, 5xx, red: lo traduce el servicio a 503
         raise ErrorExtraccion(f"{type(e).__name__}: {e}") from e
     latencia = time.perf_counter() - inicio
-    parsed = r.get("parsed") if isinstance(r, dict) else r
-    if r.get("parsing_error") if isinstance(r, dict) else None:
-        raise ErrorExtraccion(f"salida inválida: {r['parsing_error']}")
+    if isinstance(r, dict):          # include_raw=True: {"raw", "parsed", "parsing_error"}
+        if r.get("parsing_error") is not None:
+            raise ErrorExtraccion(f"salida inválida: {r['parsing_error']}")
+        parsed = r.get("parsed")
+    else:
+        parsed = r
     if not isinstance(parsed, Extraccion):
         try:
             parsed = Extraccion.model_validate(parsed)

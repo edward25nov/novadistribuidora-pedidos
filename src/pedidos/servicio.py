@@ -64,7 +64,7 @@ def interpretar_extraccion(
     solicitud: SolicitudPedido, extraccion: Extraccion, datos: Datos
 ) -> PedidoCalculado:
     """Todo lo que ocurre después del modelo: código puro y determinista."""
-    es_pedido, menciones, pendientes = resolver(extraccion, datos)
+    es_pedido, menciones, pendientes = resolver(extraccion, datos, solicitud.mensajes)
     if not es_pedido:
         menciones, pendientes = [], []
     items, pend_consolidacion = consolidar(menciones, datos, solicitud.cliente_id)
