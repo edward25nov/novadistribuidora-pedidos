@@ -52,12 +52,15 @@ def _crear_interpretador(config, datos: Datos | None) -> Interpretador:
     try:
         from pedidos.extractor import Extraccion
         from pedidos.llm import con_salida_estructurada, crear_llm
+        from pedidos.observabilidad import Observabilidad
 
         llm = con_salida_estructurada(crear_llm(config=config), Extraccion)
     except ErrorConfiguracion as e:
         log.error("No se pudo crear el modelo: %s", e)
         return InterpretadorPendiente(str(e))
-    return InterpretadorLLM(datos, llm)
+    obs = Observabilidad(config.mlflow_tracking_uri, config.mlflow_experimento)
+    return InterpretadorLLM(datos, llm, obs=obs, modelo=config.modelo_llm,
+                            proveedor=config.proveedor, etiquetas={"origen": "api"})
 
 
 def crear_app(

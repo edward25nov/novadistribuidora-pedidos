@@ -31,6 +31,7 @@ class Config:
     llm_esfuerzo: str
     ruta_datos: Path
     mlflow_tracking_uri: str = ""
+    mlflow_experimento: str = "novadistribuidora-pedidos"
 
     @property
     def api_key(self) -> str:
@@ -87,4 +88,6 @@ def cargar_config() -> Config:
         llm_esfuerzo=esfuerzo,
         ruta_datos=Path(os.getenv("RUTA_DATOS", "./ges")).expanduser().resolve(),
         mlflow_tracking_uri=os.getenv("MLFLOW_TRACKING_URI", "").strip(),
+        mlflow_experimento=os.getenv("MLFLOW_EXPERIMENTO", "novadistribuidora-pedidos").strip()
+        or "novadistribuidora-pedidos",
     )
