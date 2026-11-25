@@ -13,13 +13,16 @@
 
 Uso:
   python scripts/evaluar.py --nombre haiku-v3 [--modelo claude-haiku-5-5] [--repeticiones 3]
-                            [--solo-propios] [--uri http://127.0.0.1:5001]
+                            [--esfuerzo low|medium|high] [--sin-cache] [--solo-propios]
+                            [--uri http://127.0.0.1:5001]
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import dataclasses
+import hashlib
 import json
 import os
 import threading
@@ -54,6 +57,12 @@ def leer_casos(rutas: list[Path]) -> list[dict]:
     for ruta in rutas:
         casos += [json.loads(l) for l in ruta.read_text().splitlines() if l.strip()]
     return casos
+
+
+def huella(casos: list[dict]) -> str:
+    """Hash corto del contenido de los casos: si se corrige un caso, cambia el dataset."""
+    crudo = json.dumps(casos, ensure_ascii=False, sort_keys=True).encode()
+    return hashlib.sha256(crudo).hexdigest()[:8]
 
 
 def registros(casos: list[dict]) -> list[dict]:
@@ -124,9 +133,12 @@ def main() -> None:
     ap.add_argument("--repeticiones", type=int, default=3, help="corridas de los de inyección")
     ap.add_argument("--solo-propios", action="store_true")
     ap.add_argument("--sin-cache", action="store_true")
+    ap.add_argument("--esfuerzo", choices=["low", "medium", "high"], default=None)
     a = ap.parse_args()
 
     config = cargar_config()
+    if a.esfuerzo:
+        config = dataclasses.replace(config, llm_esfuerzo=a.esfuerzo)
     modelo = a.modelo or config.modelo_llm
     datos = cargar_datos(config.ruta_datos)
     rutas = [RAIZ / "ejemplos" / "casos_propios.jsonl"]
@@ -138,7 +150,8 @@ def main() -> None:
     if not obs.activa:
         raise SystemExit(f"MLflow no responde en {a.uri}: levante `docker compose up -d`.")
     experimento = mlflow.get_experiment_by_name(EXPERIMENTO)
-    dataset = registrar_dataset(f"pedidos-eval-{len(casos)}", casos, experimento.experiment_id)
+    dataset = registrar_dataset(f"pedidos-eval-{len(casos)}-{huella(casos)}", casos,
+                                experimento.experiment_id)
 
     llm = con_salida_estructurada(crear_llm(modelo, config), Extraccion)
     interp = InterpretadorLLM(datos, llm, cache=not a.sin_cache, obs=obs, modelo=modelo,
@@ -167,7 +180,7 @@ def main() -> None:
         mlflow.log_params({"modelo": modelo, "proveedor": config.proveedor,
                            "esfuerzo": config.llm_esfuerzo, "version_prompt": VERSION_PROMPT,
                            "cache": not a.sin_cache, "casos": len(casos),
-                           "dataset": dataset.name})
+                           "dataset": dataset.name, "huella_casos": huella(casos)})
         resultado = mlflow.genai.evaluate(data=dataset, predict_fn=predecir, scorers=SCORERS)
 
         # --- Métricas por tipo, latencia y costo (además de las agregadas de MLflow) ---
@@ -216,12 +229,14 @@ def main() -> None:
                           "estado_correcto": sum(e == c["esperado"]["estado"] for e in estados),
                           "estados": "|".join(str(e) for e in estados)})
         if estab:
-            mlflow.log_metrics({
+            m_iny = {
                 "inyeccion_intactos": sum(e["precios_y_mensaje_intactos"] for e in estab)
                 / sum(e["corridas"] for e in estab),
                 "inyeccion_estado_estable": sum(e["estado_correcto"] for e in estab)
                 / sum(e["corridas"] for e in estab),
-            })
+            }
+            mlflow.log_metrics(m_iny)
+            metricas.update(m_iny)
 
         # --- Evidencia ---
         destino = RAIZ / "evidencia" / "evaluaciones"
@@ -236,7 +251,8 @@ def main() -> None:
                 w.writeheader()
                 w.writerows(estab)
         resumen = {"corrida": a.nombre, "run_id": run.info.run_id, "modelo": modelo,
-                   "proveedor": config.proveedor, "casos": len(casos),
+                   "proveedor": config.proveedor, "esfuerzo": config.llm_esfuerzo,
+                   "cache": not a.sin_cache, "casos": len(casos), "dataset": dataset.name,
                    **{k: round(v, 6) for k, v in metricas.items()},
                    "por_tipo": {t: f"{sum(x['exacto'] for x in v)}/{len(v)}"
                                 for t, v in sorted(por_tipo.items())},
