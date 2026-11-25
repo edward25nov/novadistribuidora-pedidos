@@ -18,6 +18,7 @@ def _config(proveedor: str, a_key: str = "", o_key: str = "") -> Config:
         modelo_juez="claude-opus-5-5",
         llm_timeout_s=12,
         llm_max_retries=1,
+        llm_esfuerzo="low",
         ruta_datos=Path("ges"),
     )
 
@@ -78,3 +79,29 @@ def test_crear_llm_openrouter():
 def test_crear_llm_sin_clave(proveedor, variable):
     with pytest.raises(ErrorConfiguracion, match=f"Falta {variable}_API_KEY"):
         crear_llm(config=_config(proveedor))
+
+
+def test_numeros_invalidos(monkeypatch):
+    from pedidos.config import cargar_config
+
+    monkeypatch.setenv("LLM_TIMEOUT_S", "rápido")
+    with pytest.raises(ErrorConfiguracion, match="LLM_TIMEOUT_S"):
+        cargar_config()
+    monkeypatch.setenv("LLM_TIMEOUT_S", "15")
+    monkeypatch.setenv("LLM_MAX_RETRIES", "-1")
+    with pytest.raises(ErrorConfiguracion, match="LLM_MAX_RETRIES"):
+        cargar_config()
+
+
+def test_salida_estructurada_usa_json_schema():
+    """Con function_calling LangChain fuerza tool_choice, que Sonnet 5.5 rechaza (400)."""
+    from pydantic import BaseModel
+
+    from pedidos.llm import METODO_ESTRUCTURADO, con_salida_estructurada
+
+    class E(BaseModel):
+        x: int
+
+    assert METODO_ESTRUCTURADO == "json_schema"
+    llm = crear_llm(config=_config("anthropic", a_key="sk-ant-prueba"))
+    assert con_salida_estructurada(llm, E) is not None
