@@ -41,7 +41,9 @@ Ponga **una** de las dos claves en `.env`:
 | `OPENROUTER_API_KEY` | OpenRouter, modelo `anthropic/claude-haiku-5.5` |
 | `ANTHROPIC_API_KEY` | API de Anthropic, modelo `claude-haiku-5-5` |
 
-El modelo es `MODELO_LLM` (`claude-haiku-5-5`); con OpenRouter el id se traduce solo.
+El modelo es `MODELO_LLM` (`claude-haiku-5-5`); con OpenRouter el id se traduce solo y se
+prefiere el proveedor Anthropic dentro de OpenRouter (para aprovechar la caché de prompt).
+Ambos caminos están probados con los casos publicados (84/84 por Anthropic y por OpenRouter).
 `.env` está en `.gitignore` y en `.dockerignore`: nunca se versiona ni entra en la imagen.
 
 ## 3. Levantar el producto

@@ -18,7 +18,9 @@ actualizan con los números de la evaluación (fase 6).
 - **Id del modelo:** `MODELO_LLM` usa el id de Anthropic (`claude-haiku-5-5`); para OpenRouter
   se traduce a `anthropic/claude-haiku-5.5` (ids verificados en `GET /api/v1/models` de
   OpenRouter el 2026-11-25). Un id con `/` se pasa tal cual.
-- **Pendiente:** smoke test manual por proveedor, documentado en el README (fase 7).
+- **Smoke test por OpenRouter (2026-11-25):** con solo `OPENROUTER_API_KEY` y `PROVEEDOR_LLM=auto`
+  en un contenedor, el ejemplo del Anexo sale idéntico (1,6 s). Los 84 casos dev por OpenRouter:
+  **84/84 exactos**, p50 1,31 s, p95 2,14 s, ≈ US$ 0,012 en total.
 
 ## D2. Datos del GES fuera del repositorio, en `ges/`
 
@@ -58,8 +60,13 @@ actualizan con los números de la evaluación (fase 6).
 - **Decisión:** `method="json_schema"` (salida estructurada nativa) para ambos proveedores, con
   `include_raw=True` para obtener el uso de tokens (costo) y el error de parseo sin excepción.
 - **Verificado** con la API de Anthropic con Haiku 5.5 y Sonnet 5.5 (2026-11-25).
-- **Pendiente:** verificarlo por OpenRouter con una clave de OpenRouter (smoke test, fase 3);
-  si OpenRouter no lo soporta para Claude, el método pasará a depender del proveedor.
+- **Verificado también por OpenRouter** (2026-11-25): `json_schema`, `reasoning_effort` y
+  `cache_control` en el bloque de sistema funcionan con `anthropic/claude-haiku-5.5`.
+- **Caché por OpenRouter:** OpenRouter reparte las solicitudes entre proveedores y la caché es
+  por proveedor. Sin fijar el orden, 3 llamadas seguidas **escribieron** la caché (4 914 tokens
+  cada una, a 1,25× el precio) y ninguna la leyó. Con `provider.order=["anthropic"]` y
+  `allow_fallbacks=true` (en `crear_llm`), las siguientes leyeron 4 914 tokens de caché; en los
+  84 casos, el 98,5 % de la entrada salió de caché.
 
 ## D6. Validación de la solicitud (422) y orden 422 → 404
 

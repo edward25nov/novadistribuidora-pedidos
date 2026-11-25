@@ -73,6 +73,7 @@ def test_crear_llm_openrouter():
     assert type(llm).__name__ == "ChatOpenAI"
     assert llm.model_name == "anthropic/claude-haiku-5.5"
     assert llm.openai_api_base == OPENROUTER_BASE_URL
+    assert llm.extra_body["provider"]["order"] == ["anthropic"]   # caché por proveedor
 
 
 @pytest.mark.parametrize("proveedor, variable", [("anthropic", "ANTHROPIC"), ("openrouter", "OPENROUTER")])
