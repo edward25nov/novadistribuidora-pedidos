@@ -20,6 +20,7 @@ en el Anexo del enunciado (`POST /v1/pedidos/interpretar`, `GET /health`, puerto
 - Python 3.12+, LangChain 1.x, FastAPI, MLflow 3, pandas, pytest. Código en `src/pedidos/`.
 - El modelo se crea solo en `src/pedidos/llm.py` (`crear_llm`). Proveedor por `.env`
   (`PROVEEDOR_LLM=anthropic|openrouter|auto`). Sin `temperature`.
+- MLflow solo en `src/pedidos/observabilidad.py` (nunca debe frenar ni tumbar el servicio).
 - MLflow en el puerto **5001** del host (en macOS el 5000 lo ocupa AirPlay); API en el 8000.
 
 ## Reglas

@@ -11,6 +11,7 @@ services:
     environment:
       RUTA_DATOS: /datos                       # absoluta dentro del contenedor
       MLFLOW_TRACKING_URI: http://mlflow:5000  # red interna de compose
+      MLFLOW_EXPERIMENTO: novadistribuidora-pedidos
     volumes:
       - ./ges:/datos:ro                        # datos del GES, solo lectura
     ports:

@@ -58,8 +58,13 @@ curl localhost:8000/health        # {"estado":"ok",...}
 | API | http://localhost:8000 (documentación interactiva en `/docs`) |
 | MLflow | http://localhost:5001 (en macOS el 5000 lo ocupa AirPlay) |
 
-Si MLflow no está disponible, la API sigue respondiendo y `GET /health` devuelve
-`{"estado": "degradado", "motivo": "mlflow: no disponible (...)"}`.
+Cada solicitud deja una traza en MLflow (experimento `novadistribuidora-pedidos`) con los
+pasos `extraer` (modelo, tokens, costo), `reglas` y `confirmacion`, y etiquetas para filtrar
+por `cliente_id`, `estado`, `modelo` y `proveedor`.
+
+Si MLflow no está disponible, la API sigue respondiendo (sin trazar esas solicitudes) y
+`GET /health` devuelve `{"estado": "degradado", "motivo": "mlflow: no disponible (...)"}`.
+Cuando MLflow vuelve, la API reconecta sola.
 
 Ejemplo:
 

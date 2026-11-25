@@ -10,12 +10,13 @@ RUN pip install -r requirements.txt
 
 COPY pyproject.toml .
 COPY src ./src
+COPY configs ./configs
 RUN pip install --no-deps .
 
 RUN useradd --create-home app
 USER app
 
-ENV RUTA_DATOS=/datos
+ENV RUTA_DATOS=/datos RUTA_PRECIOS=/app/configs/precios.yaml
 EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
