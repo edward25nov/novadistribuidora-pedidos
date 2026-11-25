@@ -1,0 +1,21 @@
+# Secretos: .env NUNCA va a Git (solo .env.example)
+.env
+.env.*
+!.env.example
+
+# Datos del GES: no forman parte del repositorio (se descomprimen en ges/)
+ges/
+*.parquet
+*.zip
+
+# Entorno y artefactos
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+mlruns/
+mlartifacts/
+mlflow.db
+salidas/
+.DS_Store
