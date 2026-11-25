@@ -3,7 +3,17 @@
 Aplicación con LLMs (LangChain + FastAPI + MLflow + Docker) que convierte mensajes informales
 de WhatsApp en pedidos estructurados y verificables. Laboratorio 3 de Product Development.
 
-> En construcción: este README se completa fase a fase.
+El modelo (Claude Haiku 5.5) solo extrae qué pidió el cliente; precios, descuentos, crédito,
+fecha de entrega y el mensaje de confirmación los calcula código probado. Las decisiones, con
+sus alternativas y mediciones, están en [`DECISIONES.md`](DECISIONES.md); la evidencia
+(comparación de modelos, evaluaciones y capturas de MLflow), en [`evidencia/`](evidencia/).
+
+## 0. Requisitos
+
+- Docker con Docker Compose (para levantar el producto).
+- **Python 3.12 o superior** solo para las pruebas y la evaluación (secciones 4 y 5). En macOS,
+  `python3` suele ser el 3.9 del sistema: use el ejecutable versionado (`python3.12`,
+  `python3.13`, …). Verifique con `python3.13 --version`.
 
 ## 1. Datos del GES
 
@@ -81,7 +91,7 @@ motivo en español) · 503 modelo o datos no disponibles (nunca se inventa un pe
 ## 4. Desarrollo local y pruebas
 
 ```bash
-python3 -m venv .venv
+python3.13 -m venv .venv          # Python 3.12+ (ver sección 0)
 .venv/bin/pip install -r requirements-dev.txt && .venv/bin/pip install -e .
 .venv/bin/python -m pytest        # no llama al modelo ni necesita los datos del GES
 ```
@@ -105,7 +115,7 @@ Desde un clon limpio, con los datos en `ges/` (sección 1) y `.env` con una clav
 
 ```bash
 docker compose up -d --build                     # API :8000 y MLflow :5001
-python3 -m venv .venv
+python3.13 -m venv .venv          # Python 3.12+ (ver sección 0)
 .venv/bin/pip install -r requirements-dev.txt && .venv/bin/pip install -e .
 
 # Evaluación: 84 casos publicados + 32 propios, contra el MLflow del compose

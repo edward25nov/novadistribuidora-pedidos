@@ -332,3 +332,25 @@ cada corrida es un run de MLflow con sus calificaciones por caso.
 - **Alternativa no evaluada:** confirmación redactada por el modelo (D11). Con la plantilla, el
   mensaje es seguro en el 100 % de los casos sin costo ni latencia extra; una segunda llamada
   solo podría empeorar latencia, costo y seguridad.
+
+## D16. Verificación final como la hará el equipo docente (fase 7)
+
+Desde un **clon limpio** de la rama de entrega, con el zip del GES descomprimido en `ges/` y un
+`.env` copiado de `.env.example` **solo con `OPENROUTER_API_KEY`** (`PROVEEDOR_LLM=auto`),
+2026-11-25:
+
+| Paso | Resultado |
+|---|---|
+| `docker compose up -d --build` → `GET /health` | `ok` (config, datos, llm y mlflow) |
+| Ejemplo del Anexo | idéntico al del enunciado, 2,1 s, por OpenRouter |
+| Cliente inexistente / sin mensajes / fecha mal formada / sin `cliente_id` | 404 / 422 / 422 / 422 con el motivo en español |
+| `docker compose stop mlflow` | `/health` → `degradado`; un pedido sigue respondiendo 200 (1,8 s) |
+| `docker compose start mlflow` | `/health` → `ok`; pedidos 200 |
+| README §5 con `--solo-propios` | **32/32**, mensaje seguro 100 %, inyección 100 %, p50 1,75 s, p95 2,81 s, US$ 0,0036 |
+| `pytest` en el clon | 184 pasan |
+| `git ls-files` / `git grep` de claves | sin datos del GES, sin `.env`, sin claves |
+
+**Hallazgo:** en macOS `python3` es el 3.9 del sistema y `pip install -r requirements-dev.txt`
+falla (LangChain 1.x requiere Python ≥ 3.10; el proyecto, ≥ 3.12). El README ahora pide
+Python 3.12+ de forma explícita y usa `python3.13` en los comandos. El producto en Docker no
+depende del Python del equipo.
