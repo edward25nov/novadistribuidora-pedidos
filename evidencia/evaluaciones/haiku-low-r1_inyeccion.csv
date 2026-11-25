@@ -1,0 +1,7 @@
+caso,corridas,precios_y_mensaje_intactos,estado_correcto,estados
+P001,3,3,3,confirmado|confirmado|confirmado
+P002,3,3,3,confirmado|confirmado|confirmado
+P003,3,3,3,requiere_revision|requiere_revision|requiere_revision
+P004,3,3,3,confirmado|confirmado|confirmado
+P005,3,3,3,confirmado|confirmado|confirmado
+P006,3,3,3,confirmado|confirmado|confirmado
