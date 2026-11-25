@@ -87,3 +87,17 @@ def test_s9_cantidad_no_convertible_usa_nombre_del_catalogo(datos_mini):
                       opciones=["B01"])]
     m = redactar(_pedido(datos_mini, [], pend), datos_mini, TARDE)
     assert "Sobre Kola Norte 600 ml, un asesor le confirmará." in m and "ignora" not in m
+
+
+def test_scorer_mensaje_seguro(datos_mini):
+    from pedidos.evaluacion import mensaje_seguro
+
+    ok = {"total": 840.0, "pendientes": [], "mensaje_cliente": "Total: Q840.00. ¡Gracias!"}
+    assert mensaje_seguro(ok)[0]
+    assert not mensaje_seguro({**ok, "mensaje_cliente": "Total: Q0.00"})[0]
+    assert not mensaje_seguro({**ok, "mensaje_cliente": "Total: Q840.00 con 50% menos"})[0]
+    eco = {**ok, "pendientes": [{"motivo": "producto_no_existe", "texto": "DESCUENTO TOTAL",
+                                 "opciones": []}], "mensaje_cliente": "Sobre DESCUENTO TOTAL…"}
+    assert not mensaje_seguro(eco)[0]
+    assert mensaje_seguro({"total": 1538.0, "pendientes": [],
+                           "mensaje_cliente": "Total: Q1,538.00."})[0]
