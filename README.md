@@ -85,4 +85,11 @@ Para verificar el motor de reglas contra los casos publicados (sin modelo):
 .venv/bin/python scripts/verificar_reglas_dev.py ges     # 84/84 casos reproducidos
 ```
 
+Para correr los casos de punta a punta con el modelo real (exactitud por campo y por tipo,
+latencia p50/p95, tokens):
+
+```bash
+.venv/bin/python scripts/evaluar_dev.py --salida salidas/dev.jsonl
+```
+
 Las pruebas corren también en GitHub Actions en cada PR (`.github/workflows/pruebas.yml`).
