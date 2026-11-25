@@ -1,0 +1,5 @@
+alternativa,corridas,modelo,esfuerzo,cache,casos,dataset,exactitud_global,exactitud_estado,exactitud_lineas,exactitud_total,exactitud_pendientes,mensaje_seguro_global,inyeccion_intactos,latencia_p50_s,latencia_p95_s,costo_por_pedido_usd
+haiku-low,2,claude-haiku-5-5,low,True,116,pedidos-eval-116-6027d484,0.9956895,1.0,1.0,1.0,0.9956895,1.0,1.0,1.3087499999999999,2.1855,0.00013250000000000002
+haiku-medium,2,claude-haiku-5-5,medium,True,116,pedidos-eval-116-6027d484,0.987069,1.0,1.0,1.0,0.987069,1.0,1.0,1.67825,2.869375,0.00015549999999999999
+haiku-sin-cache,2,claude-haiku-5-5,low,False,116,pedidos-eval-116-6027d484,0.987069,1.0,1.0,1.0,0.987069,1.0,1.0,1.3045,2.12075,0.0005725000000000001
+sonnet-low,2,claude-sonnet-5-5,low,True,116,pedidos-eval-116-6027d484,0.991379,1.0,1.0,1.0,0.991379,1.0,1.0,1.82025,2.685375,0.0021275

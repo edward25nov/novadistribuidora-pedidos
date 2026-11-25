@@ -15,7 +15,9 @@ from typing import Any, Literal
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from pedidos.consolidacion import Accion, MencionHabitual, MencionResuelta, TipoUnidad
+from pedidos.consolidacion import (
+    Accion, MencionHabitual, MencionQuitarAmbigua, MencionResuelta, TipoUnidad,
+)
 from pedidos.datos import Datos
 from pedidos.esquemas import Motivo, Pendiente
 
@@ -199,7 +201,7 @@ def acotar_por_alias(texto: str, candidatos: list[str], datos: Datos) -> list[st
 
 def resolver(
     extraccion: Extraccion, datos: Datos, mensajes: list[str] | None = None
-) -> tuple[bool, list[MencionResuelta | MencionHabitual], list[Pendiente]]:
+) -> tuple[bool, list[MencionResuelta | MencionHabitual | MencionQuitarAmbigua], list[Pendiente]]:
     """Valida cada mención contra el catálogo.
 
     - candidatos ∩ catálogo vacío → pendiente producto_no_existe
@@ -208,7 +210,7 @@ def resolver(
     """
     if not extraccion.es_pedido:
         return False, [], []
-    resueltas: list[MencionResuelta | MencionHabitual] = []
+    resueltas: list[MencionResuelta | MencionHabitual | MencionQuitarAmbigua] = []
     pendientes: list[Pendiente] = []
     for m in extraccion.menciones:
         texto = m.texto.strip() or "(sin texto)"
@@ -226,10 +228,8 @@ def resolver(
             continue
         if len(candidatos) > 1:
             if m.accion == "quitar":
-                # "quíteme la kola": se quita cualquiera de los candidatos que esté en el pedido
-                # (consolidar ignora los que no estén). No genera pendiente.
-                resueltas.extend(MencionResuelta(texto=texto, sku=s, accion=Accion.quitar)
-                                 for s in candidatos)
+                # "quíteme la kola": se decide contra lo que ya está en el pedido (consolidar).
+                resueltas.append(MencionQuitarAmbigua(texto=texto, candidatos=tuple(candidatos)))
             else:
                 pendientes.append(Pendiente(motivo=Motivo.producto_ambiguo, texto=texto,
                                             opciones=candidatos))
