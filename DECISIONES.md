@@ -38,7 +38,44 @@ actualizan con los números de la evaluación (fase 6).
   cálculos deben ser exactos y reproducibles; y un mensaje no puede influir en un número que el
   modelo nunca produce (defensa ante inyección). Se medirá en la fase 6.
 
-## D4. Límites de la llamada al modelo
+## D4. Límites de la llamada al modelo y comportamiento ante fallos
 
-- `LLM_TIMEOUT_S=30` y `LLM_MAX_RETRIES=1` por defecto. El comportamiento ante fallo del modelo
-  (503 con mensaje claro, nunca un 500 sin manejar ni un pedido inventado) se implementa en la fase 1.
+- **Límites:** `LLM_TIMEOUT_S=15`, `LLM_MAX_RETRIES=1` (peor caso ≈ 30 s) y `LLM_ESFUERZO=low`.
+  Medición inicial (1 llamada de prueba, Anthropic, 2026-11-25): Haiku 5.5 2,7 s y Sonnet 5.5
+  1,5 s para una extracción corta. Se recalibran con el p95 de la fase 6.
+- **Alternativas ante un fallo del modelo** (timeout, 429/5xx, salida que no valida):
+  (a) 500; (b) `requiere_revision` sin líneas; (c) **503 con mensaje claro**.
+- **Decisión:** (c). Un 503 dice la verdad ("no pude interpretar"); (b) se confundiría con un
+  pedido realmente vacío y la bodega podría tratarlo como interpretado. Nunca se inventa un pedido.
+  Cualquier otra excepción se responde 500 con un mensaje genérico y queda en el log.
+- **Sin `temperature`:** Haiku 5.5 y Sonnet 5.5 responden 400 a valores distintos del
+  predeterminado (documentación de la API de Claude); se controla el gasto con el esfuerzo.
+
+## D5. Salida estructurada con `json_schema` (no `function_calling`)
+
+- **Contexto:** `with_structured_output` de LangChain usa por defecto `function_calling`, que
+  fuerza `tool_choice`; Claude Sonnet 5.5 rechaza el `tool_choice` forzado con 400.
+- **Decisión:** `method="json_schema"` (salida estructurada nativa) para ambos proveedores, con
+  `include_raw=True` para obtener el uso de tokens (costo) y el error de parseo sin excepción.
+- **Verificado** con la API de Anthropic con Haiku 5.5 y Sonnet 5.5 (2026-11-25).
+- **Pendiente:** verificarlo por OpenRouter con una clave de OpenRouter (smoke test, fase 3);
+  si OpenRouter no lo soporta para Claude, el método pasará a depender del proveedor.
+
+## D6. Validación de la solicitud (422) y orden 422 → 404
+
+- `mensajes`: entre 1 y 20, ninguno vacío o solo con espacios, máx. 2000 caracteres cada uno
+  (limita costo y superficie de inyección; un pedido real de WhatsApp es mucho más corto).
+- `fecha_hora`: exactamente `AAAA-MM-DDTHH:MM` y fecha real; hora local de Guatemala, sin
+  conversión de zona. Campos extra se ignoran.
+- Los errores se devuelven con `detail` en español y la lista `errores` (`campo`, `motivo`).
+- Se valida primero (422) y luego se busca el cliente (404): un cuerpo inválido con un cliente
+  inexistente es 422.
+
+## D7. `/health` y MLflow
+
+- `GET /health` revisa datos, clave del modelo y MLflow (`GET /health` de MLflow con timeout
+  de 1 s y resultado en caché 5 s, para que un MLflow caído no vuelva lento al servicio).
+  Responde siempre 200: `ok`, o `degradado` con `motivo`.
+- En compose la API **no** espera a que MLflow esté sano (`depends_on` sin condición): la API
+  debe arrancar y responder aunque MLflow no esté. Verificado: con `docker compose stop mlflow`
+  `/health` pasa a `degradado` (3 ms) y vuelve a `ok` al reiniciarlo.

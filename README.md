@@ -7,13 +7,26 @@ de WhatsApp en pedidos estructurados y verificables. Laboratorio 3 de Product De
 
 ## 1. Datos del GES
 
-Los datos no forman parte del repositorio. Descomprima el archivo publicado en el GES en la
-carpeta `ges/` de la raíz del repositorio:
+Los datos no forman parte del repositorio ni de la imagen de Docker. Descomprima el archivo
+publicado en el GES (cualquiera que sea su nombre) en la carpeta `ges/` de la raíz del repositorio,
+de modo que queden así:
+
+```
+ges/
+├── datos/            productos, sinonimos, precios_escala, clientes, historial_pedidos (.parquet)
+├── ejemplos/         mensajes_dev.jsonl
+├── politicas.md
+└── catalogo_problemas.md
+```
 
 ```bash
-unzip lab3.zip -d ges
-# ges/datos/*.parquet, ges/ejemplos/mensajes_dev.jsonl, ges/politicas.md, ges/catalogo_problemas.md
+unzip <archivo-del-GES>.zip -d ges
+ls ges/datos          # debe listar los 5 .parquet
 ```
+
+Si el zip trae una carpeta raíz propia (p. ej. `lab3/datos/...`), mueva su contenido a `ges/`.
+Si faltan archivos, la API arranca igual, `GET /health` responde `degradado` con la ruta que
+buscó y `POST /v1/pedidos/interpretar` responde 503 explicando qué falta.
 
 ## 2. Credenciales
 
@@ -29,10 +42,41 @@ Ponga **una** de las dos claves en `.env`:
 | `ANTHROPIC_API_KEY` | API de Anthropic, modelo `claude-haiku-5-5` |
 
 El modelo es `MODELO_LLM` (`claude-haiku-5-5`); con OpenRouter el id se traduce solo.
+`.env` está en `.gitignore` y en `.dockerignore`: nunca se versiona ni entra en la imagen.
 
-## 3. Desarrollo local
+## 3. Levantar el producto
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest
+docker compose up -d --build
+curl localhost:8000/health        # {"estado":"ok",...}
 ```
+
+| Servicio | URL |
+|---|---|
+| API | http://localhost:8000 (documentación interactiva en `/docs`) |
+| MLflow | http://localhost:5001 (en macOS el 5000 lo ocupa AirPlay) |
+
+Si MLflow no está disponible, la API sigue respondiendo y `GET /health` devuelve
+`{"estado": "degradado", "motivo": "mlflow: no disponible (...)"}`.
+
+Ejemplo:
+
+```bash
+curl -s -X POST localhost:8000/v1/pedidos/interpretar \
+  -H 'content-type: application/json' \
+  -d '{"cliente_id":"C001","fecha_hora":"2026-11-23T15:20",
+       "mensajes":["Buenas, mándeme 2 fardos de kola 600, una caja de aceite","y 48 latas de energía max"]}'
+```
+
+Códigos: 200 pedido interpretado · 404 cliente inexistente · 422 solicitud inválida (con el
+motivo en español) · 503 modelo o datos no disponibles (nunca se inventa un pedido).
+
+## 4. Desarrollo local y pruebas
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt && .venv/bin/pip install -e .
+.venv/bin/python -m pytest        # no llama al modelo ni necesita los datos del GES
+```
+
+Las pruebas corren también en GitHub Actions en cada PR (`.github/workflows/pruebas.yml`).

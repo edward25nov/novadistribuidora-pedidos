@@ -24,6 +24,8 @@ en el Anexo del enunciado (`POST /v1/pedidos/interpretar`, `GET /health`, puerto
 
 ## Reglas
 - `.env` y los datos del GES (`ges/`) nunca van a Git ni a la imagen de Docker.
-- Las pruebas no llaman al LLM (se inyecta un modelo falso).
+- Las pruebas no llaman al LLM ni usan los datos del GES (interpretador falso y datos sintéticos
+  en `tests/conftest.py`). Dependencias de desarrollo en `requirements-dev.txt`.
+- Levantar: `docker compose up -d --build`; pruebas: `.venv/bin/python -m pytest`.
 - Decisiones nuevas → `DECISIONES.md` (alternativas, justificación, números medidos).
 - Commits cortos, Conventional Commits en español, sin `Co-Authored-By`. Una rama y un PR por fase.
