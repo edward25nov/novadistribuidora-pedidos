@@ -41,7 +41,9 @@ Ponga **una** de las dos claves en `.env`:
 | `OPENROUTER_API_KEY` | OpenRouter, modelo `anthropic/claude-haiku-5.5` |
 | `ANTHROPIC_API_KEY` | API de Anthropic, modelo `claude-haiku-5-5` |
 
-El modelo es `MODELO_LLM` (`claude-haiku-5-5`); con OpenRouter el id se traduce solo.
+El modelo es `MODELO_LLM` (`claude-haiku-5-5`); con OpenRouter el id se traduce solo y se
+prefiere el proveedor Anthropic dentro de OpenRouter (para aprovechar la caché de prompt).
+Ambos caminos están probados con los casos publicados (84/84 por Anthropic y por OpenRouter).
 `.env` está en `.gitignore` y en `.dockerignore`: nunca se versiona ni entra en la imagen.
 
 ## 3. Levantar el producto
@@ -83,6 +85,13 @@ Para verificar el motor de reglas contra los casos publicados (sin modelo):
 
 ```bash
 .venv/bin/python scripts/verificar_reglas_dev.py ges     # 84/84 casos reproducidos
+```
+
+Para correr los casos de punta a punta con el modelo real (exactitud por campo y por tipo,
+latencia p50/p95, tokens):
+
+```bash
+.venv/bin/python scripts/evaluar_dev.py --salida salidas/dev.jsonl
 ```
 
 Las pruebas corren también en GitHub Actions en cada PR (`.github/workflows/pruebas.yml`).

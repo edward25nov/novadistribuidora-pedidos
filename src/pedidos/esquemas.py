@@ -83,7 +83,7 @@ class Linea(BaseModel):
     sku: str
     cantidad: int = Field(gt=0)
     precio_unitario: float
-    descuento_pct: float
+    descuento_pct: int = Field(ge=0, le=100)
     subtotal: float
 
 

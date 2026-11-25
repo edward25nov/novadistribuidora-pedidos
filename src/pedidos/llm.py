@@ -21,6 +21,10 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from pedidos.config import Config, ErrorConfiguracion, cargar_config
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+# OpenRouter reparte las solicitudes entre proveedores (Anthropic, Bedrock, Vertex…) y la caché
+# de prompt es por proveedor: sin fijar el orden, cada llamada escribía la caché y no la leía.
+# Preferimos Anthropic y permitimos respaldo si no está disponible (D5).
+OPENROUTER_PROVEEDORES = {"provider": {"order": ["anthropic"], "allow_fallbacks": True}}
 METODO_ESTRUCTURADO = "json_schema"
 
 _ID_ANTHROPIC = re.compile(r"^(claude-[a-z]+)-(\d+)(?:-(\d+))?$")
@@ -73,6 +77,7 @@ def crear_llm(modelo: str | None = None, config: Config | None = None) -> BaseCh
         timeout=config.llm_timeout_s,
         max_retries=config.llm_max_retries,
         reasoning_effort=config.llm_esfuerzo,
+        extra_body=OPENROUTER_PROVEEDORES,
     )
 
 

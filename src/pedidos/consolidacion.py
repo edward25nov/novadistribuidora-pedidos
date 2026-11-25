@@ -12,7 +12,7 @@ La suma se hace ANTES de convertir: se acumulan unidades sueltas por SKU y se co
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
 
@@ -62,7 +62,7 @@ class ItemPedido:
 class _Acumulado:
     texto: str
     sueltas: Decimal = Decimal(0)   # todo se lleva a unidades sueltas
-    textos: list[str] = field(default_factory=list)
+    invalida: bool = False          # alguna mención con cantidad <= 0 ("menos 3 fardos")
 
 
 def unidades_sueltas(cantidad: Decimal | None, unidad: TipoUnidad, upe: int) -> Decimal:
@@ -97,9 +97,13 @@ def consolidar(
         if sku not in acumulado:
             acumulado[sku] = _Acumulado(texto=texto)
         a = acumulado[sku]
-        a.sueltas = sueltas if reemplazar else a.sueltas + sueltas
         if reemplazar:
-            a.texto = texto
+            a.sueltas, a.texto, a.invalida = sueltas, texto, False
+        else:
+            a.sueltas += sueltas
+        if sueltas <= 0:
+            # Una cantidad cero o negativa no se resta ni se ignora: va a revisión.
+            a.invalida, a.texto = True, texto
 
     for m in menciones:
         if isinstance(m, MencionHabitual):
@@ -134,7 +138,7 @@ def consolidar(
     items: list[ItemPedido] = []
     for sku, a in acumulado.items():
         cantidad = a_unidades_de_venta(a.sueltas, datos.catalogo[sku].unidades_por_empaque)
-        if cantidad is None:
+        if cantidad is None or a.invalida:
             pendientes.append(
                 Pendiente(motivo=Motivo.cantidad_no_convertible, texto=a.texto, opciones=[sku])
             )
