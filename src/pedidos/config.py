@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 PROVEEDORES = ("anthropic", "openrouter")
+ESFUERZOS = ("low", "medium", "high")
 
 
 class ErrorConfiguracion(RuntimeError):
@@ -27,11 +28,17 @@ class Config:
     modelo_juez: str
     llm_timeout_s: float
     llm_max_retries: int
+    llm_esfuerzo: str
     ruta_datos: Path
+    mlflow_tracking_uri: str = ""
 
     @property
     def api_key(self) -> str:
         return self.anthropic_api_key if self.proveedor == "anthropic" else self.openrouter_api_key
+
+    @property
+    def variable_api_key(self) -> str:
+        return "ANTHROPIC_API_KEY" if self.proveedor == "anthropic" else "OPENROUTER_API_KEY"
 
 
 def resolver_proveedor(pedido: str, anthropic_key: str, openrouter_key: str) -> str:
@@ -51,17 +58,33 @@ def resolver_proveedor(pedido: str, anthropic_key: str, openrouter_key: str) -> 
     return "anthropic"
 
 
+def _numero(variable: str, defecto: str, tipo: type, minimo: float) -> float | int:
+    crudo = os.getenv(variable, defecto).strip() or defecto
+    try:
+        valor = tipo(crudo)
+    except ValueError:
+        raise ErrorConfiguracion(f"{variable}={crudo!r} no es un número válido.") from None
+    if valor < minimo:
+        raise ErrorConfiguracion(f"{variable}={crudo!r} debe ser >= {minimo}.")
+    return valor
+
+
 def cargar_config() -> Config:
     a_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     o_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    esfuerzo = os.getenv("LLM_ESFUERZO", "low").strip().lower() or "low"
+    if esfuerzo not in ESFUERZOS:
+        raise ErrorConfiguracion(f"LLM_ESFUERZO={esfuerzo!r} no es válido; use {ESFUERZOS}.")
     return Config(
         proveedor=resolver_proveedor(os.getenv("PROVEEDOR_LLM", "auto"), a_key, o_key),
         anthropic_api_key=a_key,
         openrouter_api_key=o_key,
-        modelo_llm=os.getenv("MODELO_LLM", "claude-haiku-5-5"),
-        modelo_llm_alt=os.getenv("MODELO_LLM_ALT", "claude-sonnet-5-5"),
-        modelo_juez=os.getenv("MODELO_JUEZ", "claude-opus-5-5"),
-        llm_timeout_s=float(os.getenv("LLM_TIMEOUT_S", "30")),
-        llm_max_retries=int(os.getenv("LLM_MAX_RETRIES", "1")),
-        ruta_datos=Path(os.getenv("RUTA_DATOS", "./ges")),
+        modelo_llm=os.getenv("MODELO_LLM", "claude-haiku-5-5").strip(),
+        modelo_llm_alt=os.getenv("MODELO_LLM_ALT", "claude-sonnet-5-5").strip(),
+        modelo_juez=os.getenv("MODELO_JUEZ", "claude-opus-5-5").strip(),
+        llm_timeout_s=float(_numero("LLM_TIMEOUT_S", "15", float, 1)),
+        llm_max_retries=int(_numero("LLM_MAX_RETRIES", "1", int, 0)),
+        llm_esfuerzo=esfuerzo,
+        ruta_datos=Path(os.getenv("RUTA_DATOS", "./ges")).expanduser().resolve(),
+        mlflow_tracking_uri=os.getenv("MLFLOW_TRACKING_URI", "").strip(),
     )
