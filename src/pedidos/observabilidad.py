@@ -2,8 +2,9 @@
 
 Principio: la observabilidad nunca tumba ni frena el servicio.
 - Si MLFLOW_TRACKING_URI está vacío, todo es no-op.
-- La conexión con el experimento se intenta en segundo plano y se reintenta cada
-  `REINTENTO_S`; mientras no esté lista, las solicitudes no se trazan (y /health lo refleja).
+- La conexión con el experimento se intenta en segundo plano con espera creciente (1, 2, 4… s,
+  hasta `REINTENTO_S`) o en cuanto /health ve MLflow arriba; mientras no esté lista, las
+  solicitudes no se trazan y /health dice "mlflow: conectando".
 - Los spans se exportan de forma asíncrona (MLflow): si el servidor cae a mitad de una carga,
   las solicitudes siguen respondiendo y solo se pierden esas trazas.
 - Cualquier excepción de MLflow se registra en el log y se ignora.
@@ -19,10 +20,10 @@ Estructura de una traza:
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 import threading
-import time
 from contextlib import contextmanager
 from decimal import Decimal
 from pathlib import Path
@@ -93,44 +94,61 @@ class Observabilidad:
         self.experimento = experimento
         self.precios = cargar_precios()
         self._listo = False
-        self._ultimo_intento = 0.0
-        self._lock = threading.Lock()
+        self._despertar = threading.Event()
         self._ultimo_trace_id: str | None = None
         if self.uri:
             if conectar_en_segundo_plano:
-                threading.Thread(target=self._conectar, daemon=True).start()
+                threading.Thread(target=self._bucle_conexion, daemon=True,
+                                 name="mlflow-conexion").start()
             else:
-                self._conectar()
+                self._intentar_conectar()
 
     @property
     def activa(self) -> bool:
-        """True si las trazas se están enviando (o reintenta conectar si ya toca)."""
-        if self.uri and not self._listo and time.monotonic() - self._ultimo_intento > REINTENTO_S:
-            threading.Thread(target=self._conectar, daemon=True).start()
+        """True si el experimento está listo y las trazas se envían."""
         return self._listo
 
-    def _conectar(self) -> None:
-        with self._lock:
-            if self._listo:
-                return
-            self._ultimo_intento = time.monotonic()
-            try:
-                import mlflow
+    def despertar(self) -> None:
+        """Pide reintentar ya (p. ej. cuando /health ve que MLflow volvió)."""
+        self._despertar.set()
 
-                mlflow.set_tracking_uri(self.uri)
-                mlflow.set_experiment(self.experimento)
-                self._listo = True
-                log.info("MLflow listo: %s (experimento %s)", self.uri, self.experimento)
-            except Exception as e:      # servidor caído, timeout, etc.
-                log.warning("MLflow no disponible (%s); reintento en %.0f s", type(e).__name__,
-                            REINTENTO_S)
+    def _intentar_conectar(self) -> bool:
+        try:
+            import mlflow
+
+            mlflow.set_tracking_uri(self.uri)
+            mlflow.set_experiment(self.experimento)
+        except Exception as e:      # servidor caído, timeout, etc.
+            log.warning("MLflow no disponible todavía (%s)", type(e).__name__)
+            return False
+        self._listo = True
+        log.info("MLflow listo: %s (experimento %s)", self.uri, self.experimento)
+        return True
+
+    def _bucle_conexion(self) -> None:
+        """Un solo hilo: reintenta con espera creciente 1, 2, 4… hasta REINTENTO_S, o antes si
+        alguien llama a despertar(). Al arrancar con compose, MLflow suele tardar unos
+        segundos más que la API: así las primeras solicitudes ya se trazan."""
+        espera = 1.0
+        while not self._intentar_conectar():
+            self._despertar.wait(timeout=espera)
+            self._despertar.clear()
+            espera = min(espera * 2, REINTENTO_S)
 
     @contextmanager
-    def span(self, nombre: str, tipo: str = "CHAIN", entradas: Any = None) -> Iterator[Any]:
-        """Span de MLflow, o un span nulo si la observabilidad no está activa o falla.
+    def span(self, nombre: str, tipo: str = "CHAIN", entradas: Any = None,
+             raiz: bool = False) -> Iterator[Any]:
+        """Span de MLflow, o un span nulo si no se está trazando o MLflow falla.
 
-        Las excepciones de la lógica de negocio se propagan; las de MLflow se tragan."""
-        if not self.activa:
+        La decisión de trazar se toma UNA vez por solicitud, en el span raíz (`raiz=True`): los
+        hijos solo se abren si hay un span activo de MLflow. Así una reconexión a mitad de una
+        solicitud no genera trazas huérfanas. Las excepciones de la lógica de negocio se
+        propagan; las de MLflow se tragan."""
+        if raiz:
+            trazar = self._listo
+        else:
+            trazar = _trazando.get() and _hay_span_activo()
+        if not trazar:
             yield _SpanNulo()
             return
         try:
@@ -142,6 +160,7 @@ class Observabilidad:
             log.warning("No pude abrir el span %s: %s", nombre, e)
             yield _SpanNulo()
             return
+        token = _trazando.set(True) if raiz else None
         try:
             if entradas is not None:
                 _seguro(span.set_inputs, entradas)
@@ -151,24 +170,37 @@ class Observabilidad:
             raise
         else:
             _seguro(cm.__exit__, None, None, None)
+        finally:
+            if token is not None:
+                _trazando.reset(token)
 
     def etiquetar(self, etiquetas: dict[str, Any]) -> None:
-        """Etiquetas de la traza activa (para filtrar en la UI de MLflow)."""
-        if not self.activa:
+        """Etiquetas de la traza en curso (para filtrar en la UI de MLflow)."""
+        if not (_trazando.get() and _hay_span_activo()):
             return
         try:
             import mlflow
 
             mlflow.update_current_trace(tags={k: str(v) for k, v in etiquetas.items()})
-            span = mlflow.get_current_active_span()
-            if span is not None:
-                self._ultimo_trace_id = span.trace_id
+            self._ultimo_trace_id = mlflow.get_current_active_span().trace_id
         except Exception as e:
             log.warning("No pude etiquetar la traza: %s", e)
 
     @property
     def ultimo_trace_id(self) -> str | None:
         return self._ultimo_trace_id
+
+
+_trazando: contextvars.ContextVar[bool] = contextvars.ContextVar("trazando", default=False)
+
+
+def _hay_span_activo() -> bool:
+    try:
+        import mlflow
+
+        return mlflow.get_current_active_span() is not None
+    except Exception:
+        return False
 
 
 def _seguro(funcion, *args) -> None:

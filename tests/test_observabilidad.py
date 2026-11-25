@@ -61,8 +61,7 @@ def test_sin_uri_es_no_op(datos_mini):
     assert resp.total == 240.0 and det.trace_id is None
 
 
-def test_mlflow_caido_no_frena_ni_rompe(datos_mini, monkeypatch):
-    monkeypatch.setattr(obs_mod, "REINTENTO_S", 3600)
+def test_mlflow_caido_no_frena_ni_rompe(datos_mini):
     obs = Observabilidad("http://127.0.0.1:5999", conectar_en_segundo_plano=False)
     assert not obs.activa
     interp = InterpretadorLLM(datos_mini, LLMFalso(_ex()), obs=obs, modelo="claude-haiku-5-5")
@@ -119,3 +118,66 @@ def test_error_del_modelo_queda_en_la_traza(datos_mini, mlflow_local):
     trazas = mlflow.search_traces(return_type="list", max_results=1)
     assert trazas[0].info.tags["estado"] == "error_modelo"
     assert trazas[0].info.state.value == "ERROR"
+
+
+# ---------- Conexión con espera creciente ----------
+
+def test_bucle_de_conexion_con_espera_creciente(monkeypatch):
+    obs = Observabilidad("http://127.0.0.1:5999", conectar_en_segundo_plano=False)
+    intentos, esperas = [], []
+    monkeypatch.setattr(obs, "_intentar_conectar",
+                        lambda: intentos.append(1) or len(intentos) >= 7)
+    monkeypatch.setattr(obs._despertar, "wait", lambda timeout: esperas.append(timeout))
+    obs._bucle_conexion()
+    assert esperas == [1, 2, 4, 8, 16, 30]          # tope en REINTENTO_S
+
+
+def test_health_dice_conectando_y_despierta(datos_mini):
+    from fastapi.testclient import TestClient
+
+    from pedidos.api import crear_app
+
+    class MlflowArriba:
+        def estado(self):
+            return "ok"
+
+    obs = Observabilidad("http://127.0.0.1:5999", conectar_en_segundo_plano=False)
+    interp = InterpretadorLLM(datos_mini, LLMFalso(_ex()), obs=obs)
+    salud = TestClient(crear_app(datos=datos_mini, interpretador=interp,
+                                 verificador_mlflow=MlflowArriba())).get("/health").json()
+    assert salud["estado"] == "degradado" and salud["dependencias"]["mlflow"] == "conectando"
+    assert obs._despertar.is_set()
+
+
+# ---------- Una decisión por solicitud: sin trazas partidas ----------
+
+class LLMQueConecta(LLMFalso):
+    """Cambia el estado de la observabilidad a mitad de la solicitud."""
+
+    def __init__(self, obs, listo):
+        super().__init__(_ex())
+        self.obs, self.listo = obs, listo
+
+    def invoke(self, mensajes):
+        self.obs._listo = self.listo
+        return super().invoke(mensajes)
+
+
+def test_reconexion_a_mitad_no_crea_trazas_huerfanas(datos_mini, mlflow_local):
+    mlflow, obs = mlflow_local
+    obs._listo = False                                   # al empezar la solicitud no traza
+    interp = InterpretadorLLM(datos_mini, LLMQueConecta(obs, listo=True), obs=obs)
+    assert interp.interpretar(_solicitud()).total == 240.0
+    mlflow.flush_trace_async_logging()
+    assert mlflow.search_traces(return_type="list", max_results=10) == []
+
+
+def test_desconexion_a_mitad_mantiene_la_traza_completa(datos_mini, mlflow_local):
+    mlflow, obs = mlflow_local
+    interp = InterpretadorLLM(datos_mini, LLMQueConecta(obs, listo=False), obs=obs)
+    interp.interpretar(_solicitud())
+    mlflow.flush_trace_async_logging()
+    trazas = mlflow.search_traces(return_type="list", max_results=10)
+    assert len(trazas) == 1
+    assert {s.name for s in trazas[0].data.spans} == {
+        "interpretar_pedido", "extraer", "reglas", "confirmacion"}

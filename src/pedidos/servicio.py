@@ -95,7 +95,7 @@ class InterpretadorLLM:
                                 ) -> tuple[RespuestaPedido, Detalle]:
         obs = self.obs
         entradas = solicitud.model_dump()
-        with obs.span("interpretar_pedido", "CHAIN", entradas) as raiz:
+        with obs.span("interpretar_pedido", "CHAIN", entradas, raiz=True) as raiz:
             obs.etiquetar({"cliente_id": solicitud.cliente_id, "modelo": self.modelo,
                            "proveedor": self.proveedor, "version_prompt": VERSION_PROMPT,
                            **self.etiquetas, **(etiquetas or {})})

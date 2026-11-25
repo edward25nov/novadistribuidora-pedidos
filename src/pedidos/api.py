@@ -146,11 +146,17 @@ def crear_app(
 
     @app.get("/health", response_model=Salud)
     def health():
+        estado_mlflow = verificador_mlflow.estado()
+        obs = getattr(interpretador, "obs", None)
+        if estado_mlflow == "ok" and obs is not None and obs.uri and not obs.activa:
+            # El servidor responde pero la API aún no conectó el experimento: no se traza.
+            obs.despertar()
+            estado_mlflow = "conectando"
         dependencias = {
             "config": error_config or "ok",
             "datos": "ok" if datos is not None else "no cargados",
             "llm": falta_api_key or "ok",
-            "mlflow": verificador_mlflow.estado(),
+            "mlflow": estado_mlflow,
         }
         problemas = [f"{k}: {v}" for k, v in dependencias.items() if v not in ("ok",)]
         if problemas:

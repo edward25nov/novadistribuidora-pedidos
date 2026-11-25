@@ -206,9 +206,24 @@ porcentajes y mínimos de la escala enteros no negativos, y días de visita cono
   Claude y `GET /api/v1/models` de OpenRouter, que coinciden). Separa tokens leídos y escritos en
   caché. Medido: **≈ US$ 0,00012 por pedido** con Haiku 5.5 y la caché caliente.
 - **MLflow nunca frena ni tumba el servicio:** sin `MLFLOW_TRACKING_URI` todo es no-op; la
-  conexión con el experimento se hace en segundo plano y se reintenta cada 30 s; timeouts de 3 s
+  conexión con el experimento la hace un solo hilo en segundo plano con espera creciente
+  (1, 2, 4, 8, 16, 30 s) o en cuanto `/health` ve MLflow arriba (`despertar()`); timeouts de 3 s
   y sin reintentos en el cliente; la exportación de spans es asíncrona; cualquier excepción de
   MLflow se registra y se ignora (las del negocio se propagan).
+- **Una decisión por solicitud:** el span raíz decide si se traza; los hijos solo se abren si
+  hay un span activo de MLflow. Antes, una reconexión a mitad de una solicitud dejaba trazas
+  huérfanas de un span sin etiquetas (encontrado en revisión; quedó una de las 11:59 del
+  2026-11-25 en el experimento). Probado cambiando el estado a mitad de la solicitud.
+- **`/health`** dice `mlflow: conectando` (degradado) si el servidor responde pero la API todavía
+  no conectó el experimento, para no decir "ok" cuando no se está trazando.
+- **Qué se pierde y qué no:** mientras MLflow no está disponible, las trazas de esas solicitudes
+  se descartan (advertencia en el log) y **no se reintenta su envío**; las respuestas no cambian.
+  Al arrancar compose, la API está lista ~1 s después y MLflow ~4 s después: solo las
+  solicitudes de esos primeros segundos quedan sin traza. Medido desde `compose up` limpio con
+  3 tandas de 4: la tanda a los 3 s (MLflow aún sin responder) sin traza; las de los 4 y 6 s,
+  8 trazas completas de 4 spans; 0 huérfanas.
+- **Las solicitudes rechazadas antes del servicio (422 inválida, 404 cliente inexistente) no
+  generan traza**: no llegan al modelo ni al motor; quedan en el log de acceso de uvicorn.
 - **Verificado en compose** (24 solicitudes en 3 tandas de 8 concurrentes, Haiku por Anthropic):
   todas 200. Tanda 1 con MLflow arriba: 2,2 s; **tanda 2 con MLflow detenido: 1,7 s** y
   `/health` → `degradado`; tanda 3 tras reiniciarlo: 1,7 s y `/health` → `ok`. En MLflow quedaron
