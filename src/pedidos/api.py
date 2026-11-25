@@ -52,18 +52,30 @@ def crear_app(
     verificador_mlflow: VerificadorMlflow | None = None,
     falta_api_key: str | None = None,
 ) -> FastAPI:
-    """Crea la app. Sin argumentos lee .env y RUTA_DATOS; las pruebas inyectan todo."""
+    """Crea la app. Sin argumentos lee .env y RUTA_DATOS; las pruebas inyectan todo.
+
+    Nunca deja de arrancar por configuración o datos inválidos: /health queda degradado con el
+    motivo y el POST responde 503 (así el contenedor no entra en un bucle de reinicios)."""
     error_datos: str | None = None
+    error_config: str | None = None
     if datos is None and interpretador is None:
-        config = cargar_config()
         try:
-            datos = cargar_datos(config.ruta_datos)
-        except ErrorDatos as e:
-            error_datos = str(e)
-            log.error(error_datos)
-        verificador_mlflow = verificador_mlflow or VerificadorMlflow(config.mlflow_tracking_uri)
-        if not config.api_key:
-            falta_api_key = f"falta {config.variable_api_key}"
+            config = cargar_config()
+        except ErrorConfiguracion as e:
+            error_config = str(e)
+            log.error("Configuración inválida: %s", e)
+            config = None
+        if config is not None:
+            try:
+                datos = cargar_datos(config.ruta_datos)
+            except ErrorDatos as e:
+                error_datos = str(e)
+                log.error(error_datos)
+            verificador_mlflow = verificador_mlflow or VerificadorMlflow(
+                config.mlflow_tracking_uri
+            )
+            if not config.api_key:
+                falta_api_key = f"falta {config.variable_api_key}"
         interpretador = InterpretadorPendiente()
 
     verificador_mlflow = verificador_mlflow or VerificadorMlflow("")
@@ -87,6 +99,11 @@ def crear_app(
 
     @app.post("/v1/pedidos/interpretar", response_model=RespuestaPedido)
     def interpretar(solicitud: SolicitudPedido):
+        if error_config is not None:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": f"Servicio mal configurado: {error_config}"},
+            )
         if datos is None:
             return JSONResponse(
                 status_code=503,
@@ -100,18 +117,20 @@ def crear_app(
         try:
             return interpretador.interpretar(solicitud)
         except (ErrorModelo, ErrorConfiguracion) as e:
+            # El detalle (puede traer datos del proveedor) va solo al log.
             log.warning("Modelo no disponible: %s", e)
             return JSONResponse(
                 status_code=503,
                 content={
                     "detail": "El modelo de lenguaje no está disponible en este momento; "
-                    f"intente de nuevo. ({e})"
+                    "intente de nuevo en unos segundos."
                 },
             )
 
     @app.get("/health", response_model=Salud)
     def health():
         dependencias = {
+            "config": error_config or "ok",
             "datos": "ok" if datos is not None else "no cargados",
             "llm": falta_api_key or "ok",
             "mlflow": verificador_mlflow.estado(),

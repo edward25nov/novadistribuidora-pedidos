@@ -76,6 +76,14 @@ actualizan con los números de la evaluación (fase 6).
 - `GET /health` revisa datos, clave del modelo y MLflow (`GET /health` de MLflow con timeout
   de 1 s y resultado en caché 5 s, para que un MLflow caído no vuelva lento al servicio).
   Responde siempre 200: `ok`, o `degradado` con `motivo`.
+- **MLflow sin configurar (`MLFLOW_TRACKING_URI` vacío) cuenta como `degradado`**: el enunciado
+  exige trazas de cada solicitud, así que un servicio que no las está enviando no está "ok".
+  En compose siempre está configurado.
+- **Configuración inválida** (p. ej. `PROVEEDOR_LLM=openai`, `LLM_TIMEOUT_S=abc`): la app arranca
+  igual, `/health` responde `degradado` con `config: …` y el `POST` responde 503. Así el contenedor
+  no entra en un bucle de reinicios y el problema se ve en `/health`.
+- **El 503 por falla del modelo tiene un mensaje fijo**; el detalle de la excepción (códigos e
+  ids del proveedor) solo va al log.
 - En compose la API **no** espera a que MLflow esté sano (`depends_on` sin condición): la API
   debe arrancar y responder aunque MLflow no esté. Verificado: con `docker compose stop mlflow`
   `/health` pasa a `degradado` (3 ms) y vuelve a `ok` al reiniciarlo.

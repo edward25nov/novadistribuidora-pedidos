@@ -175,3 +175,30 @@ def test_sin_datos_arranca_degradado_y_503(tmp_path, monkeypatch):
     r = c.post("/v1/pedidos/interpretar", json=VALIDA)
     assert r.status_code == 503
     assert "no-existe" in r.json()["detail"] and "README" in r.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "variable, valor",
+    [("PROVEEDOR_LLM", "openai"), ("LLM_TIMEOUT_S", "abc"), ("LLM_ESFUERZO", "x")],
+)
+def test_config_invalida_arranca_degradado_y_503(monkeypatch, variable, valor):
+    monkeypatch.setenv(variable, valor)
+    c = TestClient(crear_app())
+    salud = c.get("/health").json()
+    assert salud["estado"] == "degradado"
+    assert salud["motivo"].startswith("config: ") and variable in salud["motivo"]
+    r = c.post("/v1/pedidos/interpretar", json=VALIDA)
+    assert r.status_code == 503
+    assert variable in r.json()["detail"]
+
+
+def test_503_no_filtra_detalle_del_proveedor(datos_mini):
+    class FallaConDetalle:
+        def interpretar(self, s):
+            raise ErrorModelo("Error code: 529 - {'type': 'overloaded_error', 'request_id': 'req_x'}")
+
+    app = crear_app(datos=datos_mini, interpretador=FallaConDetalle(),
+                    verificador_mlflow=MlflowFalso())
+    r = TestClient(app).post("/v1/pedidos/interpretar", json=VALIDA)
+    assert r.status_code == 503
+    assert "req_x" not in r.text and "529" not in r.text
