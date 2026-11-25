@@ -12,7 +12,7 @@ from pedidos.config import ErrorConfiguracion, cargar_config
 from pedidos.datos import Datos, ErrorDatos, cargar_datos
 from pedidos.esquemas import RespuestaPedido, Salud, SolicitudPedido
 from pedidos.salud import VerificadorMlflow
-from pedidos.servicio import ErrorModelo, Interpretador, InterpretadorPendiente
+from pedidos.servicio import ErrorModelo, Interpretador, InterpretadorLLM, InterpretadorPendiente
 
 log = logging.getLogger("pedidos.api")
 
@@ -46,6 +46,20 @@ def _motivo_en_espanol(error: dict) -> tuple[str, str]:
     return campo, str(error.get("msg", "valor inválido"))
 
 
+def _crear_interpretador(config, datos: Datos | None) -> Interpretador:
+    if config is None or datos is None:
+        return InterpretadorPendiente()
+    try:
+        from pedidos.extractor import Extraccion
+        from pedidos.llm import con_salida_estructurada, crear_llm
+
+        llm = con_salida_estructurada(crear_llm(config=config), Extraccion)
+    except ErrorConfiguracion as e:
+        log.error("No se pudo crear el modelo: %s", e)
+        return InterpretadorPendiente(str(e))
+    return InterpretadorLLM(datos, llm)
+
+
 def crear_app(
     datos: Datos | None = None,
     interpretador: Interpretador | None = None,
@@ -76,7 +90,7 @@ def crear_app(
             )
             if not config.api_key:
                 falta_api_key = f"falta {config.variable_api_key}"
-        interpretador = InterpretadorPendiente()
+        interpretador = _crear_interpretador(config, datos)
 
     verificador_mlflow = verificador_mlflow or VerificadorMlflow("")
     interpretador = interpretador or InterpretadorPendiente()
