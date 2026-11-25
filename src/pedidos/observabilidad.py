@@ -43,6 +43,7 @@ os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", "3")
 os.environ.setdefault("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "0")
 os.environ.setdefault("MLFLOW_ENABLE_ASYNC_TRACE_LOGGING", "true")
 os.environ.setdefault("MLFLOW_DISABLE_AGENT_HINT", "1")
+os.environ.setdefault("MLFLOW_DISABLE_TELEMETRY", "true")   # sin envío de datos de uso
 
 
 # ---------- Costo ----------

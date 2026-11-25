@@ -208,3 +208,12 @@ def test_acotar_por_alias(datos_mini):
     assert acotar_por_alias("aceite", ["A06", "A07"], d) == ["A06", "A07"]          # genérico
     assert acotar_por_alias("aceite dorado o palma real", ["A06", "A07"], d) == ["A06", "A07"]
     assert acotar_por_alias("aceite dorado", ["A06"], d) == ["A06"]
+
+
+def test_quitar_ambiguo_quita_el_candidato_pedido(datos_mini):
+    ex = Extraccion(es_pedido=True, menciones=[
+        _m("kola 600", ["B01"], 2, "empaque"),
+        _m("la kola", ["B01", "B02", "B03"], accion="quitar")])
+    resp = InterpretadorLLM(datos_mini, LLMFalso(ex)).interpretar(
+        _solicitud(["mándeme 2 fardos de kola 600", "mejor no, quíteme la kola"]))
+    assert resp.estado is Estado.fuera_de_alcance and resp.lineas == [] and resp.pendientes == []

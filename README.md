@@ -99,4 +99,19 @@ latencia p50/p95, tokens):
 .venv/bin/python scripts/evaluar_dev.py --salida salidas/dev.jsonl
 ```
 
+## 5. Reproducir la evaluación en MLflow
+
+Con el producto levantado (`docker compose up -d`, MLflow en el 5001) y el `.env` con una clave:
+
+```bash
+.venv/bin/python scripts/generar_casos_propios.py         # (opcional) regenera los esperados
+.venv/bin/python scripts/evaluar.py --nombre haiku-5-5    # 84 publicados + 32 propios
+```
+
+Registra el dataset `pedidos-eval-116`, una corrida con las calificaciones por caso
+(`estado`, `lineas`, `total`, `fecha_entrega`, `motivos`, `pendientes`, `sustituciones`,
+`exacto`, `mensaje_seguro`, `latencia_s`, `costo_usd`), métricas por tipo y la estabilidad de los
+casos de inyección (3 corridas). Los CSV y el resumen quedan en `evidencia/evaluaciones/`.
+Costo aproximado con Haiku 5.5: US$ 0,02.
+
 Las pruebas corren también en GitHub Actions en cada PR (`.github/workflows/pruebas.yml`).

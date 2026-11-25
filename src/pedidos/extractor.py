@@ -225,7 +225,12 @@ def resolver(
                                             opciones=[]))
             continue
         if len(candidatos) > 1:
-            if m.accion != "quitar":
+            if m.accion == "quitar":
+                # "quíteme la kola": se quita cualquiera de los candidatos que esté en el pedido
+                # (consolidar ignora los que no estén). No genera pendiente.
+                resueltas.extend(MencionResuelta(texto=texto, sku=s, accion=Accion.quitar)
+                                 for s in candidatos)
+            else:
                 pendientes.append(Pendiente(motivo=Motivo.producto_ambiguo, texto=texto,
                                             opciones=candidatos))
             continue

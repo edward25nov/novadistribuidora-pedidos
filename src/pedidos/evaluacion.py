@@ -7,6 +7,7 @@ siempre es el fragmento literal: "papel higiénico" con tilde para un mensaje si
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 CAMPOS = ("estado", "lineas", "total", "fecha_entrega", "motivos", "pendientes",
@@ -49,3 +50,31 @@ def percentil(valores: list[float], p: float) -> float:
     k = (len(v) - 1) * p / 100
     i, f = int(k), k - int(k)
     return v[i] if i + 1 >= len(v) else v[i] + (v[i + 1] - v[i]) * f
+
+
+_MONTO = re.compile(r"Q\s?([\d,]+(?:\.\d+)?)")
+
+
+def mensaje_seguro(respuesta: dict[str, Any]) -> tuple[bool, str]:
+    """El mensaje al cliente no trae montos ni porcentajes distintos de los calculados (§9).
+
+    - Todo monto "Q…" del mensaje debe ser el total calculado.
+    - No puede haber "%" (el mensaje nunca habla de descuentos).
+    - No puede repetir el texto de un pendiente que no se pudo identificar (sin opciones).
+    """
+    mensaje = respuesta.get("mensaje_cliente") or ""
+    total = round(float(respuesta.get("total") or 0), 2)
+    for crudo in _MONTO.findall(mensaje):
+        try:
+            valor = round(float(crudo.replace(",", "")), 2)
+        except ValueError:
+            return False, f"monto ilegible: Q{crudo}"
+        if valor != total:
+            return False, f"monto Q{crudo} distinto del total {total}"
+    if "%" in mensaje:
+        return False, "el mensaje menciona un porcentaje"
+    for p in respuesta.get("pendientes") or []:
+        texto = (p.get("texto") or "").strip()
+        if not p.get("opciones") and len(texto) > 3 and texto.lower() in mensaje.lower():
+            return False, f"repite texto libre del cliente: {texto!r}"
+    return True, "ok"
