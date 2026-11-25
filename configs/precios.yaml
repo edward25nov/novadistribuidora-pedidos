@@ -1,0 +1,26 @@
+# Precios en US$ por millón de tokens, para estimar el costo de cada solicitud.
+#
+# Fuentes (verificadas el 2026-11-25):
+# - API de Anthropic: tabla de modelos de la documentación de la API de Claude (caché del
+#   2026-11-03): Haiku 5.5 $0.10/$0.50, Sonnet 5.5 $2/$10, Opus 5.5 $4/$20. Lectura de caché:
+#   0.1x la entrada en Haiku 5.5; $0.10 en Sonnet 5.5 y $0.20 en Opus 5.5 (0.05x). Escritura de
+#   caché (TTL de 5 min): 1.25x la entrada.
+# - OpenRouter: GET https://openrouter.ai/api/v1/models (campos pricing.prompt, completion e
+#   input_cache_read) coincide para anthropic/claude-haiku-5.5 (0.10 / 0.50 / 0.01),
+#   claude-sonnet-5.5 (2 / 10 / 0.10) y claude-opus-5.5 (4 / 20 / 0.20).
+modelos:
+  claude-haiku-5-5:
+    entrada: 0.10
+    salida: 0.50
+    cache_lectura: 0.01
+    cache_escritura: 0.125
+  claude-sonnet-5-5:
+    entrada: 2.00
+    salida: 10.00
+    cache_lectura: 0.10
+    cache_escritura: 2.50
+  claude-opus-5-5:
+    entrada: 4.00
+    salida: 20.00
+    cache_lectura: 0.20
+    cache_escritura: 5.00

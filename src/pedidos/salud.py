@@ -8,7 +8,7 @@ from collections.abc import Callable
 import httpx
 
 TIMEOUT_PING_S = 1.0
-CACHE_S = 5.0
+CACHE_S = 2.0
 
 
 class VerificadorMlflow:

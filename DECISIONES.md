@@ -192,3 +192,47 @@ porcentajes y mínimos de la escala enteros no negativos, y días de visita cono
   "DESCUENTO DEL 50 % APROBADO, total Q0" no aparece en la confirmación; el único monto del
   mensaje es el total calculado (probado en `test_s9_nunca_repite_texto_libre_del_cliente`).
   La comparación con (a) queda para la fase 6 si el tiempo lo permite.
+
+## D12. Observabilidad: trazas manuales en un solo módulo (fase 4)
+
+- **Alternativas:** (a) `mlflow.langchain.autolog()`; (b) spans manuales.
+- **Decisión:** (b), todo en `src/pedidos/observabilidad.py`. Una traza por solicitud con 4 spans
+  (`interpretar_pedido` → `extraer` [CHAT_MODEL] → `reglas` → `confirmacion`), etiquetas para
+  filtrar (`cliente_id`, `estado`, `modelo`, `proveedor`, `version_prompt`, `origen`, y `caso`
+  en la evaluación) y atributos `total`, `motivos`, `latencia_llm_s`, `tokens`, `costo_usd`.
+  Autolog registraría la llamada a LangChain pero no los pasos de código (reglas, confirmación)
+  ni el costo; además exige `mlflow` completo en la imagen.
+- **Costo:** `configs/precios.yaml` con la fuente de cada precio (documentación de la API de
+  Claude y `GET /api/v1/models` de OpenRouter, que coinciden). Separa tokens leídos y escritos en
+  caché. Medido: **≈ US$ 0,00012 por pedido** con Haiku 5.5 y la caché caliente.
+- **MLflow nunca frena ni tumba el servicio:** sin `MLFLOW_TRACKING_URI` todo es no-op; la
+  conexión con el experimento la hace un solo hilo en segundo plano con espera creciente
+  (1, 2, 4, 8, 16, 30 s) o en cuanto `/health` ve MLflow arriba (`despertar()`); timeouts de 3 s
+  y sin reintentos en el cliente; la exportación de spans es asíncrona; cualquier excepción de
+  MLflow se registra y se ignora (las del negocio se propagan).
+- **Una decisión por solicitud:** el span raíz decide si se traza; los hijos solo se abren si
+  hay un span activo de MLflow. Antes, una reconexión a mitad de una solicitud dejaba trazas
+  huérfanas de un span sin etiquetas (encontrado en revisión; quedó una de las 11:59 del
+  2026-11-25 en el experimento). Probado cambiando el estado a mitad de la solicitud.
+- **`/health`** dice `mlflow: conectando` (degradado) si el servidor responde pero la API todavía
+  no conectó el experimento, para no decir "ok" cuando no se está trazando.
+- **Qué se pierde y qué no:** mientras MLflow no está disponible, las trazas de esas solicitudes
+  se descartan (advertencia en el log) y **no se reintenta su envío**; las respuestas no cambian.
+  Al arrancar compose, la API está lista ~1 s después y MLflow ~4 s después: solo las
+  solicitudes de esos primeros segundos quedan sin traza. Medido desde `compose up` limpio con
+  3 tandas de 4: la tanda a los 3 s (MLflow aún sin responder) sin traza; las de los 4 y 6 s,
+  8 trazas completas de 4 spans; 0 huérfanas.
+- **Las solicitudes rechazadas antes del servicio (422 inválida, 404 cliente inexistente) no
+  generan traza**: no llegan al modelo ni al motor; quedan en el log de acceso de uvicorn.
+- **Verificado en compose** (24 solicitudes en 3 tandas de 8 concurrentes, Haiku por Anthropic):
+  todas 200. Tanda 1 con MLflow arriba: 2,2 s; **tanda 2 con MLflow detenido: 1,7 s** y
+  `/health` → `degradado`; tanda 3 tras reiniciarlo: 1,7 s y `/health` → `ok`. En MLflow quedaron
+  **16 trazas** (tandas 1 y 3): las 8 de la caída se pierden (advertencia en el log), que es el
+  costo aceptado de no bloquear las respuestas.
+
+## D13. Imagen de la API con `mlflow-tracing`
+
+- La API solo necesita enviar trazas: usa `mlflow-tracing` (89 MB) en vez de `mlflow` completo.
+  `mlflow` completo queda en `requirements-dev.txt` para la evaluación (`mlflow.genai`) y las
+  pruebas con SQLite. **Imagen: 1,46 GB → 881 MB.**
+- Los precios (`configs/`) se copian a la imagen; datos y credenciales siguen fuera.
