@@ -104,13 +104,20 @@ Donde la política deja margen, se decidió así (y se probó):
 | §5 escala | Por **línea** (no acumulada por categoría), mayor % con `cantidad >= mínimo`. Subtotal redondeado a 2 decimales `ROUND_HALF_UP`; total = suma de subtotales redondeados. | `test_s5_*` |
 | §6 crédito | `saldo + total > límite` (igual no excede). Líneas y total se devuelven igual. | `test_s6_*` |
 | §7 fecha | Recibido `>= 14:00` cuenta como el día siguiente; entrega = primera visita **estrictamente posterior** a esa fecha. Hora local, sin conversión de zona. | `test_s7_*` |
-| §8 estado | `fuera_de_alcance` solo si no hay líneas **ni** pendientes. Con solo pendientes → `requiere_revision` (con fecha de entrega calculada). | `test_s8_*` (incluye la propiedad confirmado ⇔ líneas y sin motivos) |
+| §8 estado | `fuera_de_alcance` solo si no hay líneas **ni** pendientes. Con solo pendientes → `requiere_revision` (con fecha de entrega calculada). Si el cliente quita todo lo que pidió, también `fuera_de_alcance`: el contrato exige un pendiente o crédito excedido para `requiere_revision`. | `test_s8_*` (incluye la propiedad confirmado ⇔ líneas y sin motivos) |
+| SKU fuera del catálogo | Defensa en profundidad (la resolución de la fase 3 ya valida): en `consolidar` y en `calcular_pedido` se vuelve pendiente `producto_no_existe`, nunca un 500. Un SKU del historial que ya no se vende, también. | `test_sku_fuera_del_catalogo_*`, `test_s3_sku_historico_*` |
 
-**Validación con los casos publicados:** `scripts/verificar_reglas_dev.py` reconstruye a mano
-los ítems de cada caso de `mensajes_dev.jsonl` desde la respuesta esperada (sin modelo) y corre
-el motor: **84/84** reproducen estado, líneas, total, fecha, motivos y sustituciones. En 25 de
-esos casos el día efectivo es de visita, así que "estrictamente posterior" quedó probado contra
-los datos; 28 casos están después del corte.
+**Validación con los casos publicados** (`scripts/verificar_reglas_dev.py`, sin modelo):
+- **`reglas.py` (§4–§8): 84/84.** Los ítems de cada caso se reconstruyen desde la respuesta
+  esperada (sustituciones separadas en solicitado/entregado; agotados sin sustituto como ítem
+  para que el motor los marque) y se comparan estado, líneas, total, fecha, sustituciones,
+  pendientes (motivo y opciones) y motivos. **No** cubre `consolidacion.py`: los ítems ya llegan
+  en unidades de venta. En 25 casos el día efectivo es de visita (prueba "estrictamente
+  posterior" contra los datos); 28 están después del corte.
+- **`consolidacion.py` + `reglas.py` (§2–§8): 8/8 casos `habitual`**, con las menciones escritas
+  a mano a partir del mensaje ("lo de siempre" + agregados / exclusiones) y el historial real.
+- La conversión de unidades, las correcciones y las cantidades por omisión con el texto real se
+  verifican de punta a punta con el modelo en la fase 3.
 
-**Validación de los datos al cargar:** columnas mínimas por tabla, `unidades_por_empaque >= 1`
-y días de visita conocidos; si no, `ErrorDatos` claro al arrancar (la API queda degradada).
+**Validación de los datos al cargar:** columnas mínimas por tabla, `unidades_por_empaque >= 1`,
+porcentajes y mínimos de la escala enteros no negativos, y días de visita conocidos; si no, `ErrorDatos` claro al arrancar (la API queda degradada).

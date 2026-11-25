@@ -202,3 +202,12 @@ def test_s8_propiedad_estado(datos_mini, items, pendientes, cliente):
     assert Motivo.credito_excedido not in [p.motivo for p in r.pendientes]
     if r.estado is Estado.fuera_de_alcance:
         assert r.lineas == [] and r.total == 0 and r.fecha_entrega is None
+
+
+# ---------- Defensa en profundidad ----------
+
+def test_sku_fuera_del_catalogo_es_producto_no_existe(datos_mini):
+    r = _calc(datos_mini, [("ZZZ9", 2), ("B01", 1)])
+    assert [l.sku for l in r.lineas] == ["B01"]
+    assert [(p.motivo, p.opciones) for p in r.pendientes] == [(Motivo.producto_no_existe, [])]
+    assert producto_a_entregar("ZZZ9", datos_mini.catalogo) is None

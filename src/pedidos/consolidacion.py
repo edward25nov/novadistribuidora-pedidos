@@ -112,11 +112,18 @@ def consolidar(
                 continue
             for sku, cantidad in lineas:
                 if sku not in datos.catalogo:
-                    continue   # un SKU histórico que ya no se vende no se inventa
+                    # Un SKU histórico que ya no se vende: no se inventa ni se descarta en silencio.
+                    pendientes.append(Pendiente(motivo=Motivo.producto_no_existe,
+                                                texto=f"{sku} (de {m.texto})", opciones=[]))
+                    continue
                 upe = datos.catalogo[sku].unidades_por_empaque
                 sumar(sku, datos.catalogo[sku].nombre, Decimal(cantidad) * upe, False)
             continue
 
+        if m.sku not in datos.catalogo:
+            # Defensa en profundidad: la resolución ya valida contra el catálogo.
+            pendientes.append(Pendiente(motivo=Motivo.producto_no_existe, texto=m.texto, opciones=[]))
+            continue
         producto = datos.catalogo[m.sku]
         if m.accion is Accion.quitar:
             acumulado.pop(m.sku, None)

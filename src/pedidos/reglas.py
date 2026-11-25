@@ -59,7 +59,9 @@ def credito_excedido(cliente: Cliente, total: Decimal) -> bool:
 def producto_a_entregar(sku: str, catalogo: dict[str, Producto]) -> Producto | None:
     """El producto si está disponible; si no, su sustituto si existe y está disponible.
     Nunca encadena sustituciones: un sustituto agotado o inexistente → None."""
-    p = catalogo[sku]
+    p = catalogo.get(sku)
+    if p is None:
+        return None
     if p.disponible:
         return p
     if p.sustituto_sku and p.sustituto_sku in catalogo and catalogo[p.sustituto_sku].disponible:
@@ -92,6 +94,10 @@ def calcular_pedido(
     sustituciones: list[Sustitucion] = []
 
     for item in items:
+        if item.sku not in datos.catalogo:
+            pendientes.append(Pendiente(motivo=Motivo.producto_no_existe, texto=item.texto,
+                                        opciones=[]))
+            continue
         entregado = producto_a_entregar(item.sku, datos.catalogo)
         if entregado is None:
             pendientes.append(
@@ -117,7 +123,9 @@ def calcular_pedido(
                             descuento_pct=pct, subtotal=float(st)))
 
     if not lineas and not pendientes:
-        # §8: sin pedido → fuera de alcance, sin líneas, total 0 y sin fecha.
+        # §8: sin pedido → fuera de alcance, sin líneas, total 0 y sin fecha. Incluye el caso en
+        # que el cliente quitó todo lo que pidió: sin líneas ni pendientes no hay nada que revisar
+        # (el contrato exige un pendiente o crédito excedido para requiere_revision).
         return PedidoCalculado(Estado.fuera_de_alcance, [], Decimal(0), None, [], [], [])
 
     motivos: list[Motivo] = []

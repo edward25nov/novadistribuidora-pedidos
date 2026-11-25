@@ -39,3 +39,13 @@ def test_carpeta_inexistente_menciona_ruta_y_readme(tmp_path):
     with pytest.raises(ErrorDatos, match="README") as e:
         cargar_datos(tmp_path / "nada")
     assert str(tmp_path / "nada") in str(e.value)
+
+
+def test_escala_con_porcentaje_no_entero_da_error():
+    d = construir_datos()
+    escala = d.escala.copy()
+    escala["descuento_pct"] = escala["descuento_pct"].astype(float)
+    escala.loc[0, "descuento_pct"] = 2.5
+    with pytest.raises(ErrorDatos, match="descuento_pct"):
+        Datos(productos=d.productos, sinonimos=d.sinonimos, escala=escala,
+              clientes=d.clientes, historial=d.historial)

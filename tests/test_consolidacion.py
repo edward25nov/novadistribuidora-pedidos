@@ -118,3 +118,36 @@ def test_s3_sin_pedido_entregado_es_pendiente(datos_mini):
     assert [(p.motivo, p.texto, p.opciones) for p in pendientes] == [
         (Motivo.producto_ambiguo, "lo de siempre", [])
     ]
+
+
+def test_sku_fuera_del_catalogo_es_pendiente(datos_mini):
+    items, pendientes = _items(datos_mini, [M("2 cervezas", "ZZZ9", Decimal(2))])
+    assert items == [] and [(p.motivo, p.texto) for p in pendientes] == [
+        (Motivo.producto_no_existe, "2 cervezas")
+    ]
+
+
+def test_s3_sku_historico_fuera_del_catalogo_es_pendiente(datos_mini):
+    import pandas as pd
+
+    from pedidos.datos import Datos
+
+    h = datos_mini.historial.copy()
+    h.loc[len(h)] = ["PED-9", "C003", pd.Timestamp("2026-11-20"), "VIEJO", 2, "entregado"]
+    d = Datos(productos=datos_mini.productos, sinonimos=datos_mini.sinonimos,
+              escala=datos_mini.escala, clientes=datos_mini.clientes, historial=h)
+    items, pendientes = _items(d, [MencionHabitual("lo de siempre")], cliente="C003")
+    assert items == [] and pendientes[0].motivo is Motivo.producto_no_existe
+    assert "VIEJO" in pendientes[0].texto
+
+
+def test_s8_quitar_todo_queda_fuera_de_alcance(datos_mini):
+    from datetime import datetime
+
+    from pedidos.esquemas import Estado
+    from pedidos.reglas import calcular_pedido
+
+    ms = [M("2 kola", "B01", Decimal(2)), M("mejor no, quíteme la kola", "B01", accion=Accion.quitar)]
+    items, pendientes = consolidar(ms, datos_mini, "C001")
+    r = calcular_pedido("C001", datetime(2026, 11, 23, 10), items, pendientes, datos_mini)
+    assert r.estado is Estado.fuera_de_alcance and r.total == 0 and r.fecha_entrega is None

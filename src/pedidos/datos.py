@@ -107,6 +107,10 @@ class Datos:
                     f"La tabla {nombre} ({ARCHIVOS[nombre]}) no tiene las columnas "
                     f"{sorted(faltan)}."
                 )
+        for col in ("cantidad_minima", "descuento_pct"):
+            valores = self.escala[col]
+            if not all(float(v) == int(v) and v >= 0 for v in valores):
+                raise ErrorDatos(f"precios_escala.{col} debe tener enteros no negativos.")
         catalogo = {}
         for r in self.productos.to_dict("records"):
             upe = int(r["unidades_por_empaque"])
