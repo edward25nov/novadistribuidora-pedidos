@@ -164,3 +164,31 @@ def test_s2_correccion_despues_de_negativa_la_vuelve_valida(datos_mini):
     ms = [M("menos 2 de kola", "B01", Decimal(-2)),
           M("no, que sean 4", "B01", Decimal(4), accion=Accion.corregir)]
     assert _items(datos_mini, ms) == ([("B01", 4)], [])
+
+
+# ---------- Quitar algo ambiguo: se decide contra el pedido ----------
+
+def _q(texto, *candidatos):
+    from pedidos.consolidacion import MencionQuitarAmbigua
+
+    return MencionQuitarAmbigua(texto=texto, candidatos=candidatos)
+
+
+def test_quitar_ambiguo_con_un_solo_candidato_presente(datos_mini):
+    ms = [M("2 kola 600", "B01", Decimal(2)), M("1 aceite", "A06", Decimal(1)),
+          _q("la kola", "B01", "B02", "B03")]
+    assert _items(datos_mini, ms) == ([("A06", 1)], [])
+
+
+def test_quitar_ambiguo_con_varios_presentes_no_adivina(datos_mini):
+    ms = [M("2 kola 600", "B01", Decimal(2)), M("1 kola 1.5", "B02", Decimal(1)),
+          _q("la kola", "B01", "B02", "B03")]
+    items, pendientes = _items(datos_mini, ms)
+    assert items == [("B01", 2), ("B02", 1)]
+    assert [(p.motivo, p.texto, p.opciones) for p in pendientes] == [
+        (Motivo.producto_ambiguo, "la kola", ["B01", "B02"])]
+
+
+def test_quitar_ambiguo_sin_presentes_no_cambia_nada(datos_mini):
+    ms = [M("1 aceite", "A06", Decimal(1)), _q("la kola", "B01", "B02")]
+    assert _items(datos_mini, ms) == ([("A06", 1)], [])

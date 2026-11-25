@@ -52,6 +52,16 @@ class MencionHabitual:
 
 
 @dataclass(frozen=True)
+class MencionQuitarAmbigua:
+    """'Quíteme la kola' cuando el texto puede ser varios SKU. Se resuelve contra lo que ya está
+    en el pedido: si está uno solo, se quita ese; si están 2 o más, no se adivina (pendiente
+    producto_ambiguo con los presentes); si no está ninguno, no cambia nada."""
+
+    texto: str
+    candidatos: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ItemPedido:
     sku: str          # SKU solicitado (antes de sustituir agotados)
     cantidad: int     # en unidades de venta, > 0
@@ -86,7 +96,7 @@ def a_unidades_de_venta(sueltas: Decimal, upe: int) -> int | None:
 
 
 def consolidar(
-    menciones: list[MencionResuelta | MencionHabitual],
+    menciones: list[MencionResuelta | MencionHabitual | MencionQuitarAmbigua],
     datos: Datos,
     cliente_id: str,
 ) -> tuple[list[ItemPedido], list[Pendiente]]:
@@ -106,6 +116,15 @@ def consolidar(
             a.invalida, a.texto = True, texto
 
     for m in menciones:
+        if isinstance(m, MencionQuitarAmbigua):
+            presentes = [s for s in m.candidatos if s in acumulado]
+            if len(presentes) == 1:
+                acumulado.pop(presentes[0])
+            elif len(presentes) > 1:
+                pendientes.append(Pendiente(motivo=Motivo.producto_ambiguo, texto=m.texto,
+                                            opciones=sorted(presentes)))
+            continue
+
         if isinstance(m, MencionHabitual):
             lineas = datos.ultimo_pedido_entregado(cliente_id)
             if not lineas:
