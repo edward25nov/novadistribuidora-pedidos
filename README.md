@@ -79,4 +79,10 @@ python3 -m venv .venv
 .venv/bin/python -m pytest        # no llama al modelo ni necesita los datos del GES
 ```
 
+Para verificar el motor de reglas contra los casos publicados (sin modelo):
+
+```bash
+.venv/bin/python scripts/verificar_reglas_dev.py ges     # 84/84 casos reproducidos
+```
+
 Las pruebas corren también en GitHub Actions en cada PR (`.github/workflows/pruebas.yml`).
