@@ -1,0 +1,14 @@
+langchain==1.4.9
+langchain-anthropic==1.7.10
+langchain-openai==1.8.5      # solo para PROVEEDOR_LLM=openrouter (API compatible con OpenAI)
+fastapi==0.165.0
+uvicorn==0.54.0
+mlflow==3.17.2
+pandas==3.1.1
+pyarrow==25.0.1
+pydantic==2.14.4
+python-dotenv==1.2.4
+PyYAML==6.0.4
+# pruebas
+pytest==9.2.0
+httpx==0.28.1
