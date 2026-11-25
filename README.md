@@ -101,17 +101,38 @@ latencia p50/p95, tokens):
 
 ## 5. Reproducir la evaluación en MLflow
 
-Con el producto levantado (`docker compose up -d`, MLflow en el 5001) y el `.env` con una clave:
+Desde un clon limpio, con los datos en `ges/` (sección 1) y `.env` con una clave (sección 2):
 
 ```bash
-.venv/bin/python scripts/generar_casos_propios.py         # (opcional) regenera los esperados
-.venv/bin/python scripts/evaluar.py --nombre haiku-5-5    # 84 publicados + 32 propios
+docker compose up -d --build                     # API :8000 y MLflow :5001
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt && .venv/bin/pip install -e .
+
+# Evaluación: 84 casos publicados + 32 propios, contra el MLflow del compose
+.venv/bin/python scripts/evaluar.py --nombre haiku-low-r1 --uri http://127.0.0.1:5001
 ```
 
-Registra el dataset `pedidos-eval-116`, una corrida con las calificaciones por caso
-(`estado`, `lineas`, `total`, `fecha_entrega`, `motivos`, `pendientes`, `sustituciones`,
-`exacto`, `mensaje_seguro`, `latencia_s`, `costo_usd`), métricas por tipo y la estabilidad de los
-casos de inyección (3 corridas). Los CSV y el resumen quedan en `evidencia/evaluaciones/`.
-Costo aproximado con Haiku 5.5: US$ 0,02.
+`evaluar.py` registra el dataset `pedidos-eval-116-<hash>` (el hash cambia si cambia algún
+caso), una corrida con las calificaciones por caso (`estado`, `lineas`, `total`,
+`fecha_entrega`, `motivos`, `pendientes`, `sustituciones`, `exacto`, `mensaje_seguro`,
+`latencia_s`, `costo_usd`), métricas por tipo y la estabilidad de los casos de inyección
+(3 corridas). Los CSV y el resumen quedan en `evidencia/evaluaciones/` y como artefactos de la
+corrida. Opciones: `--modelo`, `--esfuerzo low|medium|high`, `--sin-cache`, `--solo-propios`.
+Costo aproximado por corrida: US$ 0,02 con Haiku 5.5 y US$ 0,27 con Sonnet 5.5.
+
+Para repetir la comparación de alternativas (sección 6 de `DECISIONES.md`):
+
+```bash
+for r in 1 2; do
+  .venv/bin/python scripts/evaluar.py --nombre haiku-low-r$r --modelo claude-haiku-5-5 --esfuerzo low
+  .venv/bin/python scripts/evaluar.py --nombre sonnet-low-r$r --modelo claude-sonnet-5-5 --esfuerzo low
+  .venv/bin/python scripts/evaluar.py --nombre haiku-medium-r$r --modelo claude-haiku-5-5 --esfuerzo medium
+  .venv/bin/python scripts/evaluar.py --nombre haiku-sin-cache-r$r --modelo claude-haiku-5-5 --sin-cache
+done
+.venv/bin/python scripts/comparar.py haiku-low sonnet-low haiku-medium haiku-sin-cache
+```
+
+Los casos propios se regeneran (esperados calculados por el motor de reglas a partir de
+menciones escritas a mano) con `.venv/bin/python scripts/generar_casos_propios.py`.
 
 Las pruebas corren también en GitHub Actions en cada PR (`.github/workflows/pruebas.yml`).

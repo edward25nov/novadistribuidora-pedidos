@@ -288,3 +288,39 @@ porcentajes y mínimos de la escala enteros no negativos, y días de visita cono
     (no envía datos de uso afuera).
   - MLflow no admite expectativas con valor nulo (`fecha_entrega: null`): el pedido esperado va
     como una sola expectativa `esperado`.
+
+## D15. Elección del modelo y la configuración entregada (fase 6)
+
+Se compararon 4 alternativas sobre los **116 casos** (84 publicados + 32 propios), **2 corridas
+cada una** (el modelo no es determinista), por la API de Anthropic, el 2026-11-25. Detalle por
+corrida en `evidencia/comparacion.md`, `evidencia/comparacion.csv` y `evidencia/evaluaciones/`;
+cada corrida es un run de MLflow con sus calificaciones por caso.
+
+| Alternativa | Exactos | Estado · líneas · total | Mensaje seguro | Inyección intacta | p50 | p95 | US$ / 1000 pedidos |
+|---|---|---|---|---|---|---|---|
+| **Haiku 5.5 · esfuerzo low · caché** | **99,6 %** (99,1–100) | 100 % | 100 % | 100 % | **1,31 s** | **2,19 s** | **0,13** |
+| Sonnet 5.5 · esfuerzo low · caché | 99,1 % | 100 % | 100 % | 100 % | 1,82 s | 2,69 s | 2,13 |
+| Haiku 5.5 · esfuerzo medium · caché | 98,7 % (98,3–99,1) | 100 % | 100 % | 100 % | 1,68 s | 2,87 s | 0,16 |
+| Haiku 5.5 · esfuerzo low · sin caché | 98,7 % (98,3–99,1) | 100 % | 100 % | 100 % | 1,30 s | 2,12 s | 0,57 |
+
+- **Lo que no cambia entre alternativas:** estado, líneas, total, fecha, sustituciones, mensaje
+  seguro e inyección salen al 100 % en las 8 corridas. Es consecuencia de la arquitectura (D3,
+  D9): el modelo solo extrae y el código calcula y redacta. Las diferencias están solo en los
+  `pendientes` de casos ambiguos (opciones de más o de menos): D064 "cocas" (Sonnet y Haiku
+  medium), P013 "medio quintal de arroz" y D053 "juguitos" (variación entre corridas).
+- **Sonnet 5.5** no mejora la calidad (99,1 % frente a 99,6 %), es 0,5 s más lento en p50 y
+  **16 veces más caro**.
+- **Más esfuerzo (medium)** razona más, tarda +0,4 s en p50 y +0,7 s en p95, y no mejora: en
+  "cocas" llega a una sola presentación, cuando lo correcto es enviar las tres a revisión.
+- **Sin caché** la latencia es igual (el prefijo de ~5 000 tokens no pesa en el tiempo de
+  Haiku), pero el costo es **4,3 veces mayor** ($0,57 frente a $0,13 por 1000 pedidos). La
+  caché se queda por costo, no por latencia.
+- **Decisión:** se entrega **Claude Haiku 5.5 con esfuerzo low y caché de prompt** (`MODELO_LLM`
+  y `LLM_ESFUERZO` de `.env.example`). Es la más rápida (empata con sin caché), la más barata y
+  la de mejor exactitud. Con OpenRouter es el mismo modelo (84/84 en los casos publicados, D1).
+- **Timeout:** el p95 de la configuración elegida es 2,2 s y el máximo observado ~3,2 s;
+  `LLM_TIMEOUT_S=15` deja holgura para picos del proveedor sin dejar colgado al cliente (peor
+  caso ≈ 30 s con 1 reintento). Se mantiene.
+- **Alternativa no evaluada:** confirmación redactada por el modelo (D11). Con la plantilla, el
+  mensaje es seguro en el 100 % de los casos sin costo ni latencia extra; una segunda llamada
+  solo podría empeorar latencia, costo y seguridad.
